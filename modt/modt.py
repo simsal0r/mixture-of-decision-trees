@@ -1,0 +1,706 @@
+import numpy as np
+import pandas as pd
+from functools import lru_cache
+from sklearn.linear_model import LinearRegression
+from scipy.special import softmax
+from sklearn import tree
+from sklearn.preprocessing import StandardScaler
+from sklearn.cluster import KMeans
+from sklearn.cluster import DBSCAN
+from sklearn.ensemble import AdaBoostClassifier
+from sklearn.discriminant_analysis import LinearDiscriminantAnalysis
+from sklearn.linear_model import LogisticRegression
+from sklearn.linear_model import Ridge
+from sklearn.linear_model import Lasso
+from sklearn.mixture import GaussianMixture              
+
+from timeit import default_timer as timer
+from scipy.spatial import distance
+import pickle
+
+from ._init_theta import BGM
+
+class MoDT():    
+    
+    def __init__(self,
+                 X,
+                 y,
+                 n_experts,
+                 iterations,
+                 max_depth,
+                 init_learning_rate=2,
+                 learning_rate_decay=0.95,
+                 initialize_with="random",
+                 initalization_method=None,
+                 feature_names=None,
+                 class_names=None,
+                 use_2_dim_gate_based_on=None,
+                 use_2_dim_clustering=False,
+                 black_box_algorithm=None):
+    
+        self.verbose = True
+        self.X_contains_categorical = False 
+
+        self.use_2_dim_gate_based_on = use_2_dim_gate_based_on 
+        self.use_2_dim_clustering = use_2_dim_clustering 
+        self._check_configuration_validity() # TODO: Move (?)       
+
+        (self.X,
+         self.X_original,
+         self.X_original_pd,
+         self.X_one_hot,
+         self.y,
+         self.y_original,
+         self.feature_names,
+         self.class_names
+        ) = self._interpret_input(X,y,feature_names,class_names)
+      
+        if black_box_algorithm!=None:
+            self.y_before_surrogate = self.y
+            self.y = self.transform_y_with_surrogate_model(black_box_algorithm) 
+
+        self.scaler = self._create_scaler(self.X) # Standardization on input. Scaler also needed for prediction of new observations.
+        self.X = self._preprocess_X(self.X) # Apply standardization and add bias
+
+        self.X_top_2_mask = self._get_2_dim_feature_importance_mask() # Always calculate Top 2 features for plotting
+        self.X_2_dim = self.X[:,self.X_top_2_mask]
+
+        if self.use_2_dim_gate_based_on != None:          
+            if self.use_2_dim_gate_based_on == "feature_importance":
+                pass
+            elif self.use_2_dim_gate_based_on == "PCA":
+                self.X_2_dim = self._perform_PCA()
+            else:
+                raise Exception("Invalid method for gate dimensionality reduction.")
+
+        self.n_features_of_X = self.X.shape[1]
+        self.n_input = X.shape[0]        
+        self.n_experts = n_experts
+        self.max_depth = max_depth
+        
+        self.iterations = iterations
+        self.init_learning_rate = init_learning_rate
+        self.learning_rate_decay = learning_rate_decay
+        self.learn_rate = [self.init_learning_rate * (self.learning_rate_decay ** max(float(i), 0.0)) for i in range(iterations)] 
+
+        self.gating_values = None
+        self.DT_experts = None
+        self.DT_experts_disjoint = None
+        self.all_DTs = []
+        self.posterior_probabilities = None
+        self.confidence_experts = None
+        self.no_improvements = 0 # Counter for adding noise
+
+        #Plotting & Debugging
+        self.duration_fit = None
+        self.duration_initialization = None
+        self.init_labels = None
+        self.all_theta_gating = []
+        self.all_gating_values = []
+        self.dbscan_mask = None
+        self.regression_target = None
+        self.dbscan_selected_labels = None
+        #Debugging & Plotting kDTmeans
+        self.all_DT_clusters = []
+        self.all_clustering_accuracies = []
+        self.all_cluster_labels = []
+        self.all_cluster_centers = []
+
+        #Initialize gating values
+        self.theta_gating = self._initialize_theta(initialize_with,initalization_method)       
+        self.init_theta = self.theta_gating.copy()
+
+    def _check_configuration_validity(self):
+        if self.use_2_dim_gate_based_on == None and self.use_2_dim_clustering:
+            raise Exception("E")  
+
+    def _interpret_input(self, X, y, feature_names, class_names):
+        X_one_hot = None
+        X_original_pd = None
+        feature_names_new = None
+        class_names_new = None
+        # X
+        # Pandas
+        if isinstance(X,pd.core.frame.DataFrame):
+            # Categorical treatment
+            if np.intersect1d(['object','category'],X.dtypes.values.astype(str)).size > 0:
+                self.X_contains_categorical = True
+                X_one_hot = pd.get_dummies(X, columns = list(X.select_dtypes(include=['object','category']).columns))
+                X_one_hot = np.array(X_one_hot)
+                X_new = X_one_hot
+            else:
+                X_new = np.array(X)
+            X_original = np.array(X)
+            X_original_pd = X
+            feature_names_new = np.array(X.columns)
+        # Numpy
+        elif isinstance(X,np.ndarray):
+            X_new = X
+            X_original = X
+            # TODO: Insert categorical treatment
+        else:
+            raise Exception("X must be Pandas DataFrame or Numpy array.")
+
+        # Y
+        # Pandas
+        if isinstance(y,pd.core.series.Series):
+            y_new, class_names = pd.factorize(y)
+            class_names_new = np.array(class_names)
+        elif isinstance(y,pd.core.frame.DataFrame):
+            if y.columns.size > 1:
+                raise Exception("y has more than one column.")
+            y = y.iloc[:,0]
+            y_new, class_names = pd.factorize(y)
+            class_names_new = np.array(class_names)
+        # Numpy
+        elif isinstance(y,np.ndarray):
+            y_new = pd.factorize(y)[0]
+        else:
+            raise Exception("y must be Pandas series Pandas DataFrame or Numpy array.")
+        y_original = y
+
+        if feature_names is not None:
+            if len(feature_names) != X.shape[1]:
+                raise Exception("Feature names list length ({}) inconsistent with X ({}).".format(len(feature_names),X.shape[1]))
+            feature_names_new = np.array(feature_names)
+
+        if class_names is not None:
+            class_names_new = np.array(class_names)
+            class_names_new = class_names_new.astype(str)
+
+        return X_new, X_original, X_original_pd, X_one_hot, y_new, y_original, feature_names_new, class_names_new
+
+    def _get_2_dim_feature_importance_mask(self):
+        clf = tree.DecisionTreeClassifier()
+        clf = clf.fit(self.X, self.y)
+        # TODO: Rework
+        features_10 = [] # Features that have more than 10 unique values
+        for column in range (0,self.X.shape[1]):
+            if np.unique(self.X[:,column]).size > 10:
+                features_10.append(column)
+            else:
+                pass
+        # TODO: If less than 2 true
+
+        top_features_idx_all = np.argsort(-clf.feature_importances_)
+        mask = np.repeat(False,self.X.shape[1])
+        features_10_idx = []
+
+        for feature in features_10:
+            features_10_idx.append(np.where(top_features_idx_all==feature)[0][0])
+
+        mask[features_10_idx] = True
+
+        top_features_idx = top_features_idx_all[mask][:2] #Select 2 best features
+
+        if self.verbose:
+            print("Top 2 Feature Importance:",clf.feature_importances_[top_features_idx])
+            print("Top 2 Feature Importance w/ features with few unique values:",clf.feature_importances_[np.argsort(-clf.feature_importances_)[:2]])
+     
+
+        self.top_features_idx = top_features_idx
+
+        #X with only 2 dimensions (+1 bias) for interpretable gates
+        mask = list(self.top_features_idx)
+        mask.append(-1) # We also need the last (bias) column for regression etc.
+        return mask
+
+    def _select_X_internal(self):
+        if self.use_2_dim_clustering:
+            X = self.X_2_dim
+            X_gate = self.X_2_dim
+        elif self.use_2_dim_gate_based_on: # (but not 2_dim_clustering)
+            X = self.X
+            X_gate = self.X_2_dim
+        else:
+            X = self.X
+            X_gate = self.X
+
+        return X, X_gate
+
+    def _transform_X_into_2_dim_for_prediction(self,X,method):
+        if method == "feature_importance":
+            X = X[:,self.X_top_2_mask]
+        elif method == "PCA":
+            X = self.pca.transform(X)
+            X = np.append(X, np.ones([X.shape[0], 1]),axis=1) # Bias
+        else:
+            raise Exception ("Invalid method for gate dimensionality reduction.")
+        
+        return X
+
+    def _perform_PCA(self):
+        from sklearn.decomposition import PCA
+        pca = PCA(n_components=2)
+        pca.fit(self.X)
+        self.pca = pca # Needed s.t. we can transform incoming prediction data
+        if self.verbose:
+            print("PCA explained variance:", pca.explained_variance_ratio_)
+        X_pca = pca.transform(self.X)
+        X_pca = np.append(X_pca, np.ones([X_pca.shape[0], 1]),axis=1)
+        return X_pca
+
+    def _create_scaler(self, X):
+        return(StandardScaler().fit(X))
+
+    def _preprocess_X(self, X):
+        X = self.scaler.transform(X)       
+        return np.append(X, np.ones([X.shape[0], 1]),axis=1) #Add bias
+
+    def _initialize_theta(self, initialize_with,initalization_method=None):
+        start = timer()
+
+        if self.use_2_dim_gate_based_on != None:
+            n_features = 3
+        else:
+            n_features = self.n_features_of_X
+
+        if initialize_with == "random":
+            initialized_theta = np.random.rand(n_features,self.n_experts) 
+        elif initialize_with == "pass_method":
+            initialization = initalization_method
+            initialized_theta = initialization.calculate_theta(self)
+        elif initialize_with == "kmeans":
+            initialized_theta = self._kmeans_initialization()
+        elif initialize_with == "dbscan":
+            initialized_theta = self._DBSCAN_initialization()
+        elif initialize_with == "kDTmeans":
+            initialized_theta = self._kDTmeans_initialization()
+        elif initialize_with == "adaboost":
+            initialized_theta = self._boosting_initialization()
+        elif initialize_with == "adaboost_max":
+            initialized_theta = self._boosting_initialization(use_max=True)
+        else:
+            raise Exception("Invalid initalization method specified.")
+
+        end = timer()
+        self.duration_initialization = end - start
+        print("Duration initialization:",self.duration_initialization)
+
+        return initialized_theta
+
+    def _kmeans_initialization(self):
+
+        X, X_gate = self._select_X_internal()
+
+        kmeans = KMeans(n_clusters=self.n_experts).fit(X)
+        labels = kmeans.labels_
+        self.init_labels = labels
+        expert_target_matrix = np.zeros((self.n_input,self.n_experts))
+        expert_target_matrix[np.arange(0,self.n_input),labels[np.arange(0,self.n_input)]] = 1
+        lr = LinearRegression(fit_intercept=False).fit(X_gate,expert_target_matrix)
+
+        # return lr.coef_.T
+        return self._theta_calculation_ldr(X_gate,labels)
+
+    def _kDTmeans_initialization(self,alpha=1,beta=0.05,gamma=0.1):
+
+        X, X_gate = self._select_X_internal()
+        n_features = X.shape[1]
+
+        n_cluster = self.n_experts
+        kDTmeans_iterations = 20 #Test 1
+
+        kmeans = KMeans(n_clusters=self.n_experts).fit(X)
+        labels = kmeans.labels_
+        cluster_centers = kmeans.cluster_centers_
+
+        self.all_cluster_labels.append(labels)
+        self.all_cluster_centers.append(cluster_centers)
+
+        for iteration in range(0,kDTmeans_iterations):    
+            DT_clusters = [None for i in range(n_cluster)]
+            updated_cluster_distances = np.zeros((self.n_input,n_cluster))
+            
+            for cluster_idx in range(0,n_cluster):
+                distances = distance.cdist([cluster_centers[cluster_idx,:]], X, 'euclidean').flatten()
+                weights = 1.0/(distances**alpha + beta)
+
+                DT_clusters[cluster_idx] = tree.DecisionTreeClassifier(max_depth = 2)
+                DT_clusters[cluster_idx].fit(X=X, y=self.y, sample_weight=weights)
+
+                confidence = DT_clusters[cluster_idx].predict_proba(X=X)[np.arange(self.n_input),self.y]
+                updated_cluster_distances[:,cluster_idx] = distances / (confidence + gamma)
+                
+            self.all_DT_clusters.append(DT_clusters.copy())    
+            cluster_labels = np.argmin(updated_cluster_distances,axis=1)
+            new_centers = np.zeros((n_cluster,n_features))
+            
+            for cluster_idx in range(0,n_cluster):
+                new_centers[cluster_idx,:] = np.mean(X[cluster_labels==cluster_idx,:],axis=0)
+                
+            ## Plotting & Debugging ## 
+            DT_predictions = np.zeros((self.n_input,n_cluster))
+            for cluster_idx in range(0,n_cluster):    
+                DT_predictions[:,cluster_idx] = DT_clusters[cluster_idx].predict(X=X)
+            predicted_labels = DT_predictions[np.arange(self.n_input),cluster_labels]
+            accuracy = (np.count_nonzero(predicted_labels.astype(int) == self.y) / self.n_input)
+            
+            self.all_clustering_accuracies.append(accuracy)
+            self.all_cluster_labels.append(cluster_labels)   
+            self.all_cluster_centers.append(new_centers)
+            ## ----- ##
+            
+            if np.allclose(cluster_centers,new_centers):
+                print("Convergence at iteration",iteration)
+                break
+            else:
+                cluster_centers = new_centers
+
+        return self._theta_calculation_ldr(X_gate,cluster_labels)
+
+    def _DBSCAN_initialization(self):
+        X, X_gate = self._select_X_internal()
+
+        db = DBSCAN(eps=0.035,min_samples=25).fit(X)
+        labels = db.labels_
+        n_clusters = len(set(labels)) - (1 if -1 in labels else 0)
+        if n_clusters < self.n_experts:
+            raise Exception("DBSCAN parameters yield only {} clusters but {} required".format(n_clusters,self.n_experts))
+        self.init_labels = labels #Rename
+        core_samples_mask = np.zeros_like(db.labels_, dtype=bool)
+        core_samples_mask[db.core_sample_indices_] = True
+        mask = core_samples_mask.copy()
+
+        #Get only one cluster for each expert, exclude noise cluster (-1) if top cluster
+        unique_labels, counts = np.unique(labels, return_counts=True)
+        top_label_indices = counts.argsort()[-(self.n_experts+1):][::-1]
+        top_labels = unique_labels[top_label_indices]
+        if -1 in top_labels:
+            top_labels = top_labels[top_labels != -1]
+        else:
+            top_labels = top_labels[:-1]
+        mask[np.isin(labels,top_labels) == False] = False
+        no_small_labels = labels[mask]
+
+        self.dbscan_mask = mask #Plotting
+
+        no_small_labels_temp = no_small_labels.copy()
+        #Rename clusters starting with 0
+        for number, unique_label in enumerate(top_labels):
+            no_small_labels[no_small_labels_temp == unique_label] = number    
+
+        self.dbscan_selected_labels = no_small_labels
+
+        expert_target_matrix = np.zeros((len(no_small_labels),self.n_experts))
+        expert_target_matrix[np.arange(0,len(no_small_labels)),no_small_labels[np.arange(0,len(no_small_labels))]] = 1
+        self.regression_target = expert_target_matrix
+        lr = LinearRegression(fit_intercept=False).fit(self.X[mask],expert_target_matrix)
+        print("Initialization regression score:", lr.score(self.X[mask],expert_target_matrix))
+        return(lr.coef_.T)
+
+        #return self._theta_calculation_ldr(X_gate[mask],self.dbscan_selected_labels)    
+
+    def _boosting_initialization(self,use_max=False):
+        X, X_gate = self._select_X_internal()
+
+        DTC = tree.DecisionTreeClassifier(max_depth = self.max_depth)
+        clf = AdaBoostClassifier(base_estimator=DTC, n_estimators=self.n_experts)
+        clf.fit(X, self.y)
+        print("AdaBoost model score:", clf.score(X, self.y))
+
+        confidence_correct = np.zeros([self.n_input, self.n_experts])
+        for expert_index in range(0,self.n_experts):
+            dt = clf.estimators_[expert_index]
+            dt_probability = dt.predict_proba(X)
+            confidence_correct[:, expert_index] = dt_probability[np.arange(self.n_input), self.y.flatten().astype(int)]
+
+        if use_max: #Set the most confident expert to 1; the others to 0.
+            labels = np.argmax(confidence_correct,axis=1)
+            self.init_labels = labels
+            confidence_correct = np.zeros([self.n_input, self.n_experts])
+            confidence_correct[np.arange(0,self.n_input), labels[np.arange(0,self.n_input)]] = 1
+
+        lr = LinearRegression(fit_intercept=False).fit(X,confidence_correct)
+        print("AdaBoost initialization regression score:", lr.score(X_gate,confidence_correct))
+
+        return lr.coef_.T
+
+    def predict_hard_iteration(self,X,iteration,internal=False,disjoint_trees=False):
+        if not internal:
+            X = self._preprocess_X(X)
+        if self.use_2_dim_gate_based_on != None:
+            X_gate = self._transform_X_into_2_dim_for_prediction(X,method=self.use_2_dim_gate_based_on) 
+        else:
+            X_gate = X
+
+        # if disjoint_trees:
+        #     DTs = self.DT_experts_disjoint
+        #     gating = self._gating_softmax(X_gate,self.all_theta_gating[self.iterations-1])
+        #     selected_gates = np.argmax(gating,axis=1)
+        # else:
+        DTs = self.all_DTs[iteration]
+        gating = self._gating_softmax(X_gate,self.all_theta_gating[iteration])
+        selected_gates = np.argmax(gating,axis=1)
+
+        predictions = [DTs[tree_index].predict(X) for tree_index in range(0,len(DTs))]
+        return np.array([predictions[gate][index] for index, gate in enumerate(selected_gates)]).astype("int")
+
+    def predict_hard(self,X,disjoint_trees=False): # Final iteration
+        if disjoint_trees:
+            return self.predict_hard_iteration(X,iteration=self.iterations-1,disjoint_trees=True)
+        else:   	
+            return self.predict_hard_iteration(X,iteration=self.iterations-1)
+
+    def predict_with_expert_iteration(self,X,expert,iteration):
+        X = self._preprocess_X(X)
+        DTs = self.all_DTs[iteration]
+        return DTs[expert].predict(X)            
+
+    def get_expert_iteration(self,X,iteration,internal=False):
+        if not internal:
+            X = self._preprocess_X(X)
+            if self.use_2_dim_gate_based_on != None:
+                X = self._transform_X_into_2_dim_for_prediction(X,method=self.use_2_dim_gate_based_on) 
+
+        gating = self._gating_softmax(X,self.all_theta_gating[iteration])
+        return np.argmax(gating,axis=1)
+
+    def fit(self,optimization_method = "default",add_noise=False,use_posterior=False,**optimization_kwargs):
+        start = timer()
+
+        _, X_gate = self._select_X_internal()
+
+        for iteration in range(0,self.iterations):
+
+            self._e_step(X_gate,first_iteration=(iteration == 0))
+            self._m_step(X_gate,iteration,first_iteration=(iteration == 0),optimization_method=optimization_method,
+                        use_posterior=use_posterior,
+                        add_noise=add_noise,**optimization_kwargs)
+            self._log_values_to_array()
+
+        end = timer()
+        self.duration_fit = end - start
+        print("Duration EM fit:",self.duration_fit)
+         
+    def _e_step(self,X_gate,first_iteration):
+        self.gating_values = self._gating_softmax(X=X_gate,theta_gating=self.theta_gating)
+        self.gating_values = np.nan_to_num(self.gating_values)
+
+        self._train_trees() 
+
+        self.posterior_probabilities = self._posterior_probabilties(self.DT_experts)
+
+        if first_iteration:
+            self._log_values_to_array()
+
+    def _m_step(self,X_gate,iteration,first_iteration,optimization_method,use_posterior,add_noise,**optimization_kwargs):
+        theta_new = self._update_theta(X_gate,optimization_method,use_posterior,**optimization_kwargs)
+        self.theta_gating += self.learn_rate[iteration] * theta_new
+
+        if add_noise:
+            self.theta_gating += self._theta_noise(first_iteration,iteration)
+
+    def _update_theta(self,X_gate,optimization_method,use_posterior,**optimization_kwargs):
+        if use_posterior == True:
+            optimization_target = self.posterior_probabilities
+        else:
+            optimization_target = self.posterior_probabilities - self.gating_values
+
+        if optimization_method == "least_squares_linear_regression":
+            model = LinearRegression(fit_intercept=False).fit(X_gate,optimization_target)
+            theta_new = model.coef_.T
+        elif optimization_method == "ridge_regression":
+            max_iter = optimization_kwargs.get("rr_max_iter")
+            model = Ridge(alpha=1,fit_intercept=False,max_iter=max_iter,solver="auto").fit(X_gate,optimization_target)
+            theta_new = theta_new = model.coef_.T
+        elif optimization_method == "lasso_regression":
+            model = Lasso(alpha=1,fit_intercept=False).fit(X_gate,optimization_target)
+            theta_new = theta_new = model.coef_.T
+        elif optimization_method == "moet1":
+            theta_new = X_gate.T @ optimization_target
+        elif optimization_method == "moet2":                        
+            theta_new = self._theta_recalculation_moet2(posterior_probabilities=self.posterior_probabilities,gating=self.gating_values,X=X_gate)
+        else:
+            raise Exception("Invalid opimization method selected.")
+
+        if self.verbose == True:
+            score = model.score(X_gate,optimization_target)
+            print("Score of {} = {}".format(optimization_method,score))    
+
+        return theta_new
+
+    def _train_trees(self):
+        DT_experts = [None for i in range(self.n_experts)]
+        for index_expert in range(0,self.n_experts):
+            DT_experts[index_expert] = tree.DecisionTreeClassifier(max_depth = self.max_depth)
+            DT_experts[index_expert].fit(X=self.X, y=self.y, sample_weight=self.gating_values[:,index_expert]) #Training weighted by gating values
+        self.DT_experts = DT_experts
+
+    def train_disjoint_trees(self,tree_algorithm = "sklearn"):
+        #DTs trained with one-hot gates as weights
+        gate = np.argmax(self.gating_values,axis=1)
+        gating_values_one_hot = np.zeros([self.n_input, self.n_experts])
+        gating_values_one_hot[np.arange(0,self.n_input), gate] = 1
+
+        DT_experts_disjoint = [None for i in range(self.n_experts)]
+        if tree_algorithm == "sklearn":
+            if self.X_contains_categorical:
+                X = self.X_one_hot
+            else:
+                X = self.X_original
+            for index_expert in range(0,self.n_experts):
+                DT_experts_disjoint[index_expert] = tree.DecisionTreeClassifier(max_depth = self.max_depth)
+                DT_experts_disjoint[index_expert].fit(X=X, y=self.y, sample_weight=gating_values_one_hot[:,index_expert]) 
+        elif tree_algorithm == "optimal_trees":
+            from interpretableai import iai
+            for index_expert in range(0,self.n_experts):
+                mask = gating_values_one_hot[:,index_expert] == 1
+                X=self.X_original_pd[mask].copy()
+
+                X.loc[:, X.dtypes == 'object'] = X.select_dtypes(['object']).apply(lambda x: x.astype('category')) #Optimal trees cant handle object dtypes
+                pickle.dump( X, open("output/iai_X_e{}.p".format(index_expert), "wb" ))
+
+                y=self.y_original[mask]
+                pickle.dump(y, open("output/iai_y_e{}.p".format(index_expert), "wb" ))
+                # grid = iai.GridSearch(iai.OptimalTreeClassifier(),max_depth=2)
+                # X1 = pickle.load( open("output/iai_X.p", "rb" ))
+                # y1 = pickle.load( open ("output/iai_y.p", "rb"))
+                # z = grid.fit(X=X1, y=y1) 
+        elif tree_algorithm == "h2o":
+            for index_expert in range(0,self.n_experts):
+                DT_experts_disjoint[index_expert] = tree.DecisionTreeClassifier(max_depth = self.max_depth)
+                DT_experts_disjoint[index_expert].fit(X=self.X_original, y=self.y, sample_weight=gating_values_one_hot[:,index_expert]) 
+        else:
+            raise Exception("Invalid tree algorithm.")
+
+        self.DT_experts_disjoint = DT_experts_disjoint
+
+
+    def _theta_recalculation_moet2(self,posterior_probabilities,gating,X):
+        R = np.zeros([self.n_experts*self.n_features_of_X, self.n_experts*self.n_features_of_X])
+
+        for idx_input in range(self.n_input):
+            for idx_expert in range(self.n_experts):
+                pom1 = gating[idx_input, idx_expert] * (1 - gating[idx_input, idx_expert])
+                pom2 = np.zeros([self.n_experts, self.n_features_of_X])
+                pom2[idx_expert] = X[idx_input]
+                pom2 = pom2.reshape(-1,1) #Flatten
+                R += pom1 * (pom2 @ pom2.T)       
+
+        e = self._update_theta(X,optimization_method="moet1",use_posterior=False)
+
+        if np.linalg.cond(R) < 1e7:
+            return (np.linalg.inv(R) @ e.flatten()).reshape(-1,self.n_experts)
+        else:
+            return e
+
+    def _theta_noise(self,first_iteration,iteration):
+        noise_threshold = 5
+        if self.no_improvements >= noise_threshold:
+            max_noise = np.mean(np.abs(self.theta_gating)) / 10
+            
+            noise = np.random.random_integers(-max_noise, max_noise, self.theta_gating.size).reshape(self.theta_gating.shape)
+            self.no_improvements = noise_threshold - 5
+            print("Noise inserted at iteration:", iteration)
+            return noise
+        else:
+            if first_iteration:
+                pass
+            else:
+                difference = self._accuracy_score(iteration) - self._accuracy_score(iteration-1)
+                # print(difference,np.abs(difference) < 0.0001)
+                if difference < 0 or np.abs(difference) < 0.0001: 
+                    self.no_improvements +=1
+                else:
+                    self.no_improvements = 0 
+        return 0
+
+    # Returns gating probabilities for experts column-wise for all datapoints x    
+    def _gating_softmax(self,X,theta_gating):
+        # Use theta to calculate raw gating values
+        linear_model = np.matmul(X,theta_gating)
+        if linear_model.shape[1] != self.n_experts:
+            raise Exception()        
+        # Softmax # substract the row's max from each row
+        exp_linear_model = np.exp(linear_model - np.max(linear_model, axis=1, keepdims=True))
+        return(
+            exp_linear_model / np.expand_dims(exp_linear_model.sum(axis=1), axis=1)
+        )
+    
+    # h function    
+    def _posterior_probabilties(self,DT_experts):
+        confidence_correct = np.zeros([self.n_input, self.n_experts]) #ToDo See Nina version
+        for expert_index in range(0,self.n_experts):
+            dt = DT_experts[expert_index]
+            dt_probability = dt.predict_proba(self.X)
+            confidence_correct[:, expert_index] = dt_probability[np.arange(self.n_input), self.y.flatten().astype(int)]
+
+        multiplication = self.gating_values * confidence_correct
+        return(multiplication / np.expand_dims(np.sum(multiplication, axis=1),axis=1))
+
+    def _log_values_to_array(self):
+        #Plotting & Debugging
+        self.all_theta_gating.append(self.theta_gating.copy()) #TODO: Theta and gating values not in sync
+        self.all_DTs.append(self.DT_experts.copy())
+        self.all_gating_values.append(self.gating_values.copy())  
+
+    
+    @lru_cache(maxsize = 100)
+    def _accuracy_score(self,iteration):
+        predicted_labels = self.predict_hard_iteration(self.X,iteration,internal=True)
+        accuracy = (np.count_nonzero(predicted_labels.astype(int) == self.y) / self.n_input)
+        return accuracy        
+
+    def _accuracy_score_disjoint(self):
+        predicted_labels = self.predict_hard_iteration(self.X_original,iteration=None,internal=True,disjoint_trees=True)
+        accuracy = (np.count_nonzero(predicted_labels.astype(int) == self.y) / self.n_input)
+        return accuracy
+
+    def estimate_n_experts(self,range1=range(1, 7)):
+        start = timer()
+        n_components_range = range(1, 7)
+        lowest_bic = np.infty
+        bic = []
+        estimated_n_components = None
+        for n_components in n_components_range:
+            gmm = GaussianMixture(n_components=n_components, covariance_type="full")
+            gmm.fit(self.X)
+            bic.append(gmm.bic(self.X))
+            if bic[-1] < lowest_bic:
+                lowest_bic = bic[-1]
+                estimated_n_components = n_components  
+
+        end = timer()
+        duration = end - start        
+        if self.verbose:
+            print("Duration:",duration)
+            print("N_expert tested:",range1)
+            print("BIC:",bic)
+            print("BIC %: ",np.around(bic/np.sum(bic),2))
+            print("Estimated experts",estimated_n_components)
+        return estimated_n_components
+
+    def transform_y_with_surrogate_model(self,black_box_algorithm):
+        from sklearn.neural_network import MLPClassifier
+        from sklearn.ensemble import AdaBoostClassifier
+        from sklearn.svm import SVC
+        start = timer()
+
+        if black_box_algorithm=="ANN":
+            clf = MLPClassifier().fit(self.X, self.y)          
+        elif black_box_algorithm=="DT":
+            clf = tree.DecisionTreeClassifier().fit(self.X, self.y)
+        elif black_box_algorithm=="Adaboost":
+            clf = AdaBoostClassifier().fit(self.X, self.y)
+        elif black_box_algorithm=="SVM":
+            clf = SVC().fit(self.X, self.y)
+        else:
+            raise Exception("Invalid black box algorithm specified.")
+
+        labels = np.array(clf.predict(self.X))
+
+        if np.sum(np.in1d(labels, np.arange(0,len(np.unique(labels)))) == False) > 0:
+            if self.verbose:
+                print("Warning: Surrogate model has removed at least one class entirely.")
+                labels = pd.factorize(labels)[0]        
+
+        end = timer()
+        duration = end - start 
+
+        if self.verbose:
+            print("Duration training surrogate model:",duration)
+            print(black_box_algorithm, "accuracy:", clf.score(self.X, self.y))
+
+        return labels
+
