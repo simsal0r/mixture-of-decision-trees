@@ -75,6 +75,20 @@ class TestMoDT(unittest.TestCase):
 
         self.assertTrue(fit_modt(**parameters).duration_fit is not None)
 
+        parameters["n_experts"] = 0
+        self.assertRaises(ValueError)
+
+        parameters["n_experts"] = 10
+        self.assertTrue(fit_modt(**parameters).duration_fit is not None)
+
+        parameters["n_experts"] = 1
+        self.assertTrue(fit_modt(**parameters).duration_fit is not None)
+
+        parameters["n_experts"] = 3
+        self.assertTrue(fit_modt(**parameters).duration_fit is not None)
+
+
+
 
 if __name__ == '__main__':
     unittest.main()

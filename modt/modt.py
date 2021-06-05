@@ -42,9 +42,40 @@ class MoDT():
         self.verbose = True
         self.X_contains_categorical = False
 
+        self.n_features_of_X = X.shape[1]
+        self.n_input = X.shape[0]
+        self.n_experts = n_experts
+        self.max_depth = max_depth
+        self.iterations = iterations
+        self.init_learning_rate = init_learning_rate
+        self.learning_rate_decay = learning_rate_decay
+        self.learn_rate = [self.init_learning_rate * (self.learning_rate_decay ** max(float(i), 0.0)) for i in range(iterations)]
+        self.gating_values = None
+        self.DT_experts = None
+        self.DT_experts_disjoint = None
+        self.all_DTs = []
+        self.posterior_probabilities = None
+        self.confidence_experts = None
+        self.no_improvements = 0  # Counter for adding noise
+
+        # Plotting & Debugging
+        self.duration_fit = None
+        self.duration_initialization = None
+        self.init_labels = None
+        self.all_theta_gating = []
+        self.all_gating_values = []
+        self.dbscan_mask = None
+        self.regression_target = None
+        self.dbscan_selected_labels = None
+        # Debugging & Plotting kDTmeans
+        self.all_DT_clusters = []
+        self.all_clustering_accuracies = []
+        self.all_cluster_labels = []
+        self.all_cluster_centers = []
         self.use_2_dim_gate_based_on = use_2_dim_gate_based_on
         self.use_2_dim_clustering = use_2_dim_clustering
-        self._check_configuration_validity()  # TODO: Move (?)
+
+        self._check_argument_validity()
 
         (self.X,
          self.X_original,
@@ -74,46 +105,15 @@ class MoDT():
             else:
                 raise Exception("Invalid method for gate dimensionality reduction.")
 
-        self.n_features_of_X = self.X.shape[1]
-        self.n_input = X.shape[0]
-        self.n_experts = n_experts
-        self.max_depth = max_depth
-
-        self.iterations = iterations
-        self.init_learning_rate = init_learning_rate
-        self.learning_rate_decay = learning_rate_decay
-        self.learn_rate = [self.init_learning_rate * (self.learning_rate_decay ** max(float(i), 0.0)) for i in range(iterations)]
-
-        self.gating_values = None
-        self.DT_experts = None
-        self.DT_experts_disjoint = None
-        self.all_DTs = []
-        self.posterior_probabilities = None
-        self.confidence_experts = None
-        self.no_improvements = 0  # Counter for adding noise
-
-        # Plotting & Debugging
-        self.duration_fit = None
-        self.duration_initialization = None
-        self.init_labels = None
-        self.all_theta_gating = []
-        self.all_gating_values = []
-        self.dbscan_mask = None
-        self.regression_target = None
-        self.dbscan_selected_labels = None
-        # Debugging & Plotting kDTmeans
-        self.all_DT_clusters = []
-        self.all_clustering_accuracies = []
-        self.all_cluster_labels = []
-        self.all_cluster_centers = []
-
         # Initialize gating values
         self.theta_gating = self._initialize_theta(initialize_with, initalization_method)
         self.init_theta = self.theta_gating.copy()
 
-    def _check_configuration_validity(self):
+    def _check_argument_validity(self):
         if self.use_2_dim_gate_based_on is None and self.use_2_dim_clustering:
             raise ValueError("Argument incompatibility")
+        if self.n_experts <= 0:
+            raise ValueError("More than 0 experts required.")
 
     def _interpret_input(self, X, y, feature_names, class_names):
         X_one_hot = None
