@@ -37,11 +37,11 @@ class MoDT():
                  learning_rate_decay=0.95,
                  initialize_with="random",
                  initialization_method=None,
-                 feature_names=None,
-                 class_names=None,
                  use_2_dim_gate_based_on=None,
                  use_2_dim_clustering=False,
-                 black_box_algorithm=None):
+                 black_box_algorithm=None,
+                 feature_names=None,
+                 class_names=None):
 
         self.verbose = True
         self.X_contains_categorical = False
@@ -262,16 +262,16 @@ class MoDT():
             initialized_theta = np.random.rand(n_features, self.n_experts)
         elif initialize_with == "pass_method":
             initialized_theta = initialization_method._calculate_theta(self)
-        elif initialize_with == "kmeans":
-            initialized_theta = self._kmeans_initialization()
-        elif initialize_with == "dbscan":
-            initialized_theta = self._DBSCAN_initialization()
-        elif initialize_with == "kDTmeans":
-            initialized_theta = self._kDTmeans_initialization()
-        elif initialize_with == "adaboost":
-            initialized_theta = self._boosting_initialization()
-        elif initialize_with == "adaboost_max":
-            initialized_theta = self._boosting_initialization(use_max=True)
+        # elif initialize_with == "kmeans":
+        #     initialized_theta = self._kmeans_initialization()
+        # elif initialize_with == "dbscan":
+        #     initialized_theta = self._DBSCAN_initialization()
+        # elif initialize_with == "kDTmeans":
+        #     initialized_theta = self._kDTmeans_initialization()
+        # elif initialize_with == "adaboost":
+        #     initialized_theta = self._boosting_initialization()
+        # elif initialize_with == "adaboost_max":
+        #     initialized_theta = self._boosting_initialization(use_max=True)
         else:
             raise Exception("Invalid initalization method specified.")
 

@@ -14,7 +14,7 @@ class TestMoDT(unittest.TestCase):
         self.data_target = pickle.load(open("datasets/iris_target.pd", "rb"))
         self.parameters = None
 
-    def set_paramas(self):
+    def set_default_paramas(self):
         self.parameters = {
                            "X": self.data_input,
                            "y": self.data_target,
@@ -77,11 +77,12 @@ class TestMoDT(unittest.TestCase):
         return modt
 
     def test_parameters(self):
-        self.set_paramas()
+        self.set_default_paramas()
         self.assertTrue(TestMoDT.fit_modt(**self.parameters).duration_fit is not None)
 
         self.parameters["n_experts"] = 0
-        self.assertRaises(ValueError)
+        with self.assertRaises(ValueError):
+            TestMoDT.fit_modt(**self.parameters)
 
         self.parameters["n_experts"] = 10
         self.assertTrue(TestMoDT.fit_modt(**self.parameters).duration_fit is not None)
@@ -93,7 +94,7 @@ class TestMoDT(unittest.TestCase):
         self.assertTrue(TestMoDT.fit_modt(**self.parameters).duration_fit is not None)
 
     def test_kmeans_init(self):
-        self.set_paramas()
+        self.set_default_paramas()
         self.parameters["initialize_with"] = "pass_method"
         self.parameters["initialization_method"] = Kmeans_init(theta_fittig_method="lda")
         n_experts = [1,2,3,10]
@@ -110,7 +111,68 @@ class TestMoDT(unittest.TestCase):
             self.assertTrue(test_model.duration_fit is not None)
             self.assertTrue(test_model.init_labels is not None)
 
+    def test_2dim_sanity_check(self):
+        self.set_default_paramas()
+        self.parameters["use_2_dim_gate_based_on"] = None
+        self.parameters["use_2_dim_clustering"] = True
+        with self.assertRaises(ValueError):
+            TestMoDT.fit_modt(**self.parameters)
 
+    def test_2dim(self):
+        self.set_default_paramas()
+        self.parameters["use_2_dim_gate_based_on"] = "feature_importance"
+        self.parameters["use_2_dim_clustering"] = True
+        test_model = TestMoDT.fit_modt(**self.parameters)
+        self.assertTrue(test_model._select_X_internal()[1].shape[1] == 3)
+        self.assertTrue(test_model.duration_fit is not None)
+
+        self.parameters["use_2_dim_gate_based_on"] = "feature_importance"
+        self.parameters["use_2_dim_clustering"] = False
+        test_model = TestMoDT.fit_modt(**self.parameters)
+        self.assertTrue(test_model._select_X_internal()[1].shape[1] == 3)
+        self.assertTrue(test_model.duration_fit is not None)
+
+        self.parameters["use_2_dim_gate_based_on"] = "PCA"
+        self.parameters["use_2_dim_clustering"] = True
+        test_model = TestMoDT.fit_modt(**self.parameters)
+        self.assertTrue(test_model._select_X_internal()[1].shape[1] == 3)
+        self.assertTrue(test_model.duration_fit is not None)
+
+        self.parameters["use_2_dim_gate_based_on"] = "PCA"
+        self.parameters["use_2_dim_clustering"] = False
+        test_model = TestMoDT.fit_modt(**self.parameters)
+        self.assertTrue(test_model._select_X_internal()[1].shape[1] == 3)
+        self.assertTrue(test_model.duration_fit is not None)
+
+    def test_2dim_initialization_method(self):
+        self.set_default_paramas()
+        self.parameters["initialize_with"] = "pass_method"
+        self.parameters["initialization_method"] = Kmeans_init(theta_fittig_method="lda")
+
+
+        self.parameters["use_2_dim_gate_based_on"] = "feature_importance"
+        self.parameters["use_2_dim_clustering"] = True
+        test_model = TestMoDT.fit_modt(**self.parameters)
+        self.assertTrue(test_model._select_X_internal()[1].shape[1] == 3)
+        self.assertTrue(test_model.duration_fit is not None)
+
+        self.parameters["use_2_dim_gate_based_on"] = "feature_importance"
+        self.parameters["use_2_dim_clustering"] = False
+        test_model = TestMoDT.fit_modt(**self.parameters)
+        self.assertTrue(test_model._select_X_internal()[1].shape[1] == 3)
+        self.assertTrue(test_model.duration_fit is not None)
+
+        self.parameters["use_2_dim_gate_based_on"] = "PCA"
+        self.parameters["use_2_dim_clustering"] = True
+        test_model = TestMoDT.fit_modt(**self.parameters)
+        self.assertTrue(test_model._select_X_internal()[1].shape[1] == 3)
+        self.assertTrue(test_model.duration_fit is not None)
+
+        self.parameters["use_2_dim_gate_based_on"] = "PCA"
+        self.parameters["use_2_dim_clustering"] = False
+        test_model = TestMoDT.fit_modt(**self.parameters)
+        self.assertTrue(test_model._select_X_internal()[1].shape[1] == 3)
+        self.assertTrue(test_model.duration_fit is not None)
 
 
 if __name__ == '__main__':
