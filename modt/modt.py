@@ -5,6 +5,7 @@ from sklearn.linear_model import LinearRegression
 from scipy.special import softmax
 from sklearn import tree
 from sklearn.preprocessing import StandardScaler
+from sklearn.decomposition import PCA
 from sklearn.cluster import KMeans
 from sklearn.cluster import DBSCAN
 from sklearn.ensemble import AdaBoostClassifier
@@ -18,7 +19,10 @@ from timeit import default_timer as timer
 from scipy.spatial import distance
 import pickle
 
-from ._init_theta import BGM
+#from ._initialization import _theta_calculation_lda
+#from ._initialization import BGM
+
+#from . import _initialization
 
 
 class MoDT():
@@ -32,7 +36,7 @@ class MoDT():
                  init_learning_rate=2,
                  learning_rate_decay=0.95,
                  initialize_with="random",
-                 initalization_method=None,
+                 initialization_method=None,
                  feature_names=None,
                  class_names=None,
                  use_2_dim_gate_based_on=None,
@@ -57,6 +61,8 @@ class MoDT():
         self.posterior_probabilities = None
         self.confidence_experts = None
         self.no_improvements = 0  # Counter for adding noise
+        self.use_2_dim_gate_based_on = use_2_dim_gate_based_on
+        self.use_2_dim_clustering = use_2_dim_clustering
 
         # Plotting & Debugging
         self.duration_fit = None
@@ -72,8 +78,7 @@ class MoDT():
         self.all_clustering_accuracies = []
         self.all_cluster_labels = []
         self.all_cluster_centers = []
-        self.use_2_dim_gate_based_on = use_2_dim_gate_based_on
-        self.use_2_dim_clustering = use_2_dim_clustering
+
 
         self._check_argument_validity()
 
@@ -106,7 +111,7 @@ class MoDT():
                 raise Exception("Invalid method for gate dimensionality reduction.")
 
         # Initialize gating values
-        self.theta_gating = self._initialize_theta(initialize_with, initalization_method)
+        self.theta_gating = self._initialize_theta(initialize_with, initialization_method)
         self.init_theta = self.theta_gating.copy()
 
     def _check_argument_validity(self):
@@ -230,7 +235,6 @@ class MoDT():
         return X
 
     def _perform_PCA(self):
-        from sklearn.decomposition import PCA
         pca = PCA(n_components=2)
         pca.fit(self.X)
         self.pca = pca  # Needed s.t. we can transform incoming prediction data
@@ -247,19 +251,17 @@ class MoDT():
         X = self.scaler.transform(X)
         return np.append(X, np.ones([X.shape[0], 1]), axis=1)  # Add bias
 
-    def _initialize_theta(self, initialize_with, initalization_method=None):
+    def _initialize_theta(self, initialize_with, initialization_method=None):
         start = timer()
 
-        if self.use_2_dim_gate_based_on is not None:
-            n_features = 3
-        else:
-            n_features = self.n_features_of_X
-
         if initialize_with == "random":
+            if self.use_2_dim_gate_based_on is not None:
+                n_features = 3
+            else:
+                n_features = self.n_features_of_X
             initialized_theta = np.random.rand(n_features, self.n_experts)
         elif initialize_with == "pass_method":
-            initialization = initalization_method
-            initialized_theta = initialization.calculate_theta(self)
+            initialized_theta = initialization_method._calculate_theta(self)
         elif initialize_with == "kmeans":
             initialized_theta = self._kmeans_initialization()
         elif initialize_with == "dbscan":
@@ -275,23 +277,24 @@ class MoDT():
 
         end = timer()
         self.duration_initialization = end - start
-        print("Duration initialization:", self.duration_initialization)
+        if self.verbose:
+            print("Duration initialization:", self.duration_initialization)
 
         return initialized_theta
 
-    def _kmeans_initialization(self):
+    # def _kmeans_initialization(self):
 
-        X, X_gate = self._select_X_internal()
+    #     X, X_gate = self._select_X_internal()
 
-        kmeans = KMeans(n_clusters=self.n_experts).fit(X)
-        labels = kmeans.labels_
-        self.init_labels = labels
-        expert_target_matrix = np.zeros((self.n_input, self.n_experts))
-        expert_target_matrix[np.arange(0, self.n_input), labels[np.arange(0, self.n_input)]] = 1
-        lr = LinearRegression(fit_intercept=False).fit(X_gate, expert_target_matrix)
+    #     kmeans = KMeans(n_clusters=self.n_experts).fit(X)
+    #     labels = kmeans.labels_
+    #     self.init_labels = labels
+    #     expert_target_matrix = np.zeros((self.n_input, self.n_experts))
+    #     expert_target_matrix[np.arange(0, self.n_input), labels[np.arange(0, self.n_input)]] = 1
+    #     # lr = LinearRegression(fit_intercept=False).fit(X_gate, expert_target_matrix)
 
-        # return lr.coef_.T
-        return self._theta_calculation_ldr(X_gate, labels)
+    #     # return lr.coef_.T
+    #     return _theta_calculation_lda(self, X_gate, labels)
 
     def _kDTmeans_initialization(self, alpha=1, beta=0.05, gamma=0.1):
 
@@ -347,7 +350,7 @@ class MoDT():
             else:
                 cluster_centers = new_centers
 
-        return self._theta_calculation_ldr(X_gate, cluster_labels)
+        return self._theta_calculation_lda(X_gate, cluster_labels)
 
     def _DBSCAN_initialization(self):
         X, X_gate = self._select_X_internal()
@@ -389,7 +392,7 @@ class MoDT():
         print("Initialization regression score:", lr.score(self.X[mask], expert_target_matrix))
         return(lr.coef_.T)
 
-        #return self._theta_calculation_ldr(X_gate[mask],self.dbscan_selected_labels)
+        #return self._theta_calculation_lda(X_gate[mask],self.dbscan_selected_labels)
 
     def _boosting_initialization(self, use_max=False):
         X, X_gate = self._select_X_internal()

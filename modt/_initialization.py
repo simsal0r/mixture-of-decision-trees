@@ -7,6 +7,7 @@ from sklearn.mixture import BayesianGaussianMixture
 from sklearn.discriminant_analysis import LinearDiscriminantAnalysis
 from sklearn.linear_model import LinearRegression
 
+
 def _fit_theta(self_modt,X_gate,labels,theta_fittig_method):
     self_modt.init_labels = labels
     if theta_fittig_method == "lda":
@@ -20,12 +21,12 @@ def _theta_calculation_lr(self_modt,X,y):
     if np.sum(np.in1d(y, np.arange(0,len(np.unique(y)))) == False) > 0:
         if self_modt.verbose:
             print("Initialization label names contain gaps, factorizing using pandas...")
-            y = pd.factorize(y)[0]
+        y = pd.factorize(y)[0]
     expert_target_matrix = np.zeros((self_modt.n_input,self_modt.n_experts))
     expert_target_matrix[np.arange(0,self_modt.n_input),y[np.arange(0,self_modt.n_input)]] = 1
     lr = LinearRegression(fit_intercept=False).fit(X,expert_target_matrix)
     if self_modt.verbose:
-        print("LR score:", lr.score(X, expert_target_matrix))
+        print("Initialization LR score:", lr.score(X, expert_target_matrix))
 
     return lr.coef_.T
 
@@ -33,9 +34,9 @@ def _theta_calculation_lda(self_modt,X,y):
     clf = LinearDiscriminantAnalysis()
     clf.fit(X, y)
     if self_modt.verbose:
-        print("LDA score:", clf.score(X, y))
+        print("Initialization LDA score:", clf.score(X, y))
     if self_modt.n_experts == 2: # special case 2 experts; here both regions are separeted by the same discriminant
-        theta = np.zeros((self_modt.X.shape[1],self_modt.n_experts))
+        theta = np.zeros((X.shape[1],self_modt.n_experts))
         theta[:,0] = clf.coef_
         theta[:,1] = clf.coef_ * -1
     else:
@@ -48,15 +49,31 @@ def _theta_calculation_lda(self_modt,X,y):
 
     theta[-1] = clf.intercept_ # Replace bias row with intercept of LDR
     return theta
+
+class Kmeans_init():
+
+    def __init__(self,theta_fittig_method="lda"):
+        self.theta_fittig_method = theta_fittig_method
+
+    def _calculate_theta(self,self_modt):
+        X, X_gate = self_modt._select_X_internal()
+        kmeans = KMeans(n_clusters=self_modt.n_experts).fit(X)
+        labels = kmeans.labels_
+        self_modt.init_labels = labels
+        #expert_target_matrix = np.zeros((self_modt.n_input, self_modt.n_experts))
+        #expert_target_matrix[np.arange(0, self_modt.n_input), labels[np.arange(0, self_modt.n_input)]] = 1
+
+        return _fit_theta(self_modt, X_gate, labels, self.theta_fittig_method)
+        return _theta_calculation_lda(self, X_gate, labels)
     
-class KDTmeans():
+class KDTmeans_init():
 
     def __init__(self,alpha=1,beta=0.05,gamma=0.1):
         self.alpha = alpha
         self.beta = beta
         self.gamma = gamma
     
-    def calculate_theta(self,self_modt):
+    def _calculate_theta(self,self_modt):
 
         X, X_gate = self_modt._select_X_internal()
         n_features = X.shape[1]
@@ -110,9 +127,9 @@ class KDTmeans():
             else:
                 cluster_centers = new_centers
 
-        return self_modt._theta_calculation_ldr(X_gate,cluster_labels)
+        return self_modt._theta_calculation_lda(X_gate,cluster_labels)
 
-class BGM():
+class BGM_init():
     def __init__(self,theta_fittig_method,
                  n_components=7,covariance_type="full",init_params="random",
                  max_iter=500, mean_precision_prior=0.8,
@@ -130,7 +147,7 @@ class BGM():
         self.weight_concentration_prior = weight_concentration_prior
         self.weight_cutoff = weight_cutoff
                     
-    def calculate_theta(self,self_modt):
+    def _calculate_theta(self,self_modt):
 
         X, X_gate = self_modt._select_X_internal()
 
