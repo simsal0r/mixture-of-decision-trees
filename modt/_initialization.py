@@ -64,11 +64,12 @@ class Kmeans_init():
         #expert_target_matrix[np.arange(0, self_modt.n_input), labels[np.arange(0, self_modt.n_input)]] = 1
 
         return _fit_theta(self_modt, X_gate, labels, self.theta_fittig_method)
-        return _theta_calculation_lda(self, X_gate, labels)
+
     
 class KDTmeans_init():
 
-    def __init__(self,alpha=1,beta=0.05,gamma=0.1):
+    def __init__(self,alpha=1,beta=0.05,gamma=0.1,theta_fittig_method="lda"):
+        self.theta_fittig_method = theta_fittig_method
         self.alpha = alpha
         self.beta = beta
         self.gamma = gamma
@@ -126,8 +127,9 @@ class KDTmeans_init():
                 break
             else:
                 cluster_centers = new_centers
+        
+        return _fit_theta(self_modt, X_gate, labels, self.theta_fittig_method)
 
-        return self_modt._theta_calculation_lda(X_gate,cluster_labels)
 
 class BGM_init():
     def __init__(self,theta_fittig_method,

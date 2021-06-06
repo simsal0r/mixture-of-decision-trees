@@ -296,61 +296,61 @@ class MoDT():
     #     # return lr.coef_.T
     #     return _theta_calculation_lda(self, X_gate, labels)
 
-    def _kDTmeans_initialization(self, alpha=1, beta=0.05, gamma=0.1):
+    # def _kDTmeans_initialization(self, alpha=1, beta=0.05, gamma=0.1):
 
-        X, X_gate = self._select_X_internal()
-        n_features = X.shape[1]
+    #     X, X_gate = self._select_X_internal()
+    #     n_features = X.shape[1]
 
-        n_cluster = self.n_experts
-        kDTmeans_iterations = 20  # Test 1
+    #     n_cluster = self.n_experts
+    #     kDTmeans_iterations = 20  # Test 1
 
-        kmeans = KMeans(n_clusters=self.n_experts).fit(X)
-        labels = kmeans.labels_
-        cluster_centers = kmeans.cluster_centers_
+    #     kmeans = KMeans(n_clusters=self.n_experts).fit(X)
+    #     labels = kmeans.labels_
+    #     cluster_centers = kmeans.cluster_centers_
 
-        self.all_cluster_labels.append(labels)
-        self.all_cluster_centers.append(cluster_centers)
+    #     self.all_cluster_labels.append(labels)
+    #     self.all_cluster_centers.append(cluster_centers)
 
-        for iteration in range(0, kDTmeans_iterations):
-            DT_clusters = [None for i in range(n_cluster)]
-            updated_cluster_distances = np.zeros((self.n_input, n_cluster))
+    #     for iteration in range(0, kDTmeans_iterations):
+    #         DT_clusters = [None for i in range(n_cluster)]
+    #         updated_cluster_distances = np.zeros((self.n_input, n_cluster))
 
-            for cluster_idx in range(0, n_cluster):
-                distances = distance.cdist([cluster_centers[cluster_idx, :]], X, 'euclidean').flatten()
-                weights = 1.0 / (distances**alpha + beta)
+    #         for cluster_idx in range(0, n_cluster):
+    #             distances = distance.cdist([cluster_centers[cluster_idx, :]], X, 'euclidean').flatten()
+    #             weights = 1.0 / (distances**alpha + beta)
 
-                DT_clusters[cluster_idx] = tree.DecisionTreeClassifier(max_depth=2)
-                DT_clusters[cluster_idx].fit(X=X, y=self.y, sample_weight=weights)
+    #             DT_clusters[cluster_idx] = tree.DecisionTreeClassifier(max_depth=2)
+    #             DT_clusters[cluster_idx].fit(X=X, y=self.y, sample_weight=weights)
 
-                confidence = DT_clusters[cluster_idx].predict_proba(X=X)[np.arange(self.n_input), self.y]
-                updated_cluster_distances[:, cluster_idx] = distances / (confidence + gamma)
+    #             confidence = DT_clusters[cluster_idx].predict_proba(X=X)[np.arange(self.n_input), self.y]
+    #             updated_cluster_distances[:, cluster_idx] = distances / (confidence + gamma)
 
-            self.all_DT_clusters.append(DT_clusters.copy())
-            cluster_labels = np.argmin(updated_cluster_distances, axis=1)
-            new_centers = np.zeros((n_cluster, n_features))
+    #         self.all_DT_clusters.append(DT_clusters.copy())
+    #         cluster_labels = np.argmin(updated_cluster_distances, axis=1)
+    #         new_centers = np.zeros((n_cluster, n_features))
 
-            for cluster_idx in range(0, n_cluster):
-                new_centers[cluster_idx, :] = np.mean(X[cluster_labels == cluster_idx, :], axis=0)
+    #         for cluster_idx in range(0, n_cluster):
+    #             new_centers[cluster_idx, :] = np.mean(X[cluster_labels == cluster_idx, :], axis=0)
 
-            # Plotting & Debugging #
-            DT_predictions = np.zeros((self.n_input, n_cluster))
-            for cluster_idx in range(0, n_cluster):
-                DT_predictions[:, cluster_idx] = DT_clusters[cluster_idx].predict(X=X)
-            predicted_labels = DT_predictions[np.arange(self.n_input), cluster_labels]
-            accuracy = (np.count_nonzero(predicted_labels.astype(int) == self.y) / self.n_input)
+    #         # Plotting & Debugging #
+    #         DT_predictions = np.zeros((self.n_input, n_cluster))
+    #         for cluster_idx in range(0, n_cluster):
+    #             DT_predictions[:, cluster_idx] = DT_clusters[cluster_idx].predict(X=X)
+    #         predicted_labels = DT_predictions[np.arange(self.n_input), cluster_labels]
+    #         accuracy = (np.count_nonzero(predicted_labels.astype(int) == self.y) / self.n_input)
 
-            self.all_clustering_accuracies.append(accuracy)
-            self.all_cluster_labels.append(cluster_labels)
-            self.all_cluster_centers.append(new_centers)
-            # ----- #
+    #         self.all_clustering_accuracies.append(accuracy)
+    #         self.all_cluster_labels.append(cluster_labels)
+    #         self.all_cluster_centers.append(new_centers)
+    #         # ----- #
 
-            if np.allclose(cluster_centers, new_centers):
-                print("Convergence at iteration", iteration)
-                break
-            else:
-                cluster_centers = new_centers
+    #         if np.allclose(cluster_centers, new_centers):
+    #             print("Convergence at iteration", iteration)
+    #             break
+    #         else:
+    #             cluster_centers = new_centers
 
-        return self._theta_calculation_lda(X_gate, cluster_labels)
+    #     return self._theta_calculation_lda(X_gate, cluster_labels)
 
     def _DBSCAN_initialization(self):
         X, X_gate = self._select_X_internal()

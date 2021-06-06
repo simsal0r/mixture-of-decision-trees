@@ -111,6 +111,34 @@ class TestMoDT(unittest.TestCase):
             self.assertTrue(test_model.duration_fit is not None)
             self.assertTrue(test_model.init_labels is not None)
 
+    def test_kDTmeans_init(self):
+        self.set_default_paramas()
+        self.parameters["initialize_with"] = "pass_method"
+        self.parameters["initialization_method"] = KDTmeans_init(alpha=1,beta=0.05,gamma=0.1,theta_fittig_method="lda")
+        n_experts = [1,2,3,10]
+        for n in n_experts:
+            self.parameters["n_experts"] = n
+            test_model = TestMoDT.fit_modt(**self.parameters)
+            self.assertTrue(test_model.duration_fit is not None)
+            self.assertTrue(test_model.all_DT_clusters != [])
+
+    def test_kDTmeans_init_large_dataset(self):
+        self.set_default_paramas()
+        data_input = pickle.load(open("datasets/breast_cancer_input.np", "rb"))
+        data_target = pickle.load(open("datasets/breast_cancer_target.np", "rb"))
+        self.parameters["X"] = data_input
+        self.parameters["y"] = data_target
+        self.parameters["initialize_with"] = "pass_method"
+        self.parameters["initialization_method"] = KDTmeans_init(alpha=1,beta=0.05,gamma=0.1,theta_fittig_method="lda")
+        n_experts = [1,2,3,10]
+        for n in n_experts:
+            self.parameters["n_experts"] = n
+            test_model = TestMoDT.fit_modt(**self.parameters)
+            self.assertTrue(test_model.duration_fit is not None)
+            self.assertTrue(test_model.all_DT_clusters != [])
+
+
+
     def test_2dim_sanity_check(self):
         self.set_default_paramas()
         self.parameters["use_2_dim_gate_based_on"] = None
@@ -173,6 +201,7 @@ class TestMoDT(unittest.TestCase):
         test_model = TestMoDT.fit_modt(**self.parameters)
         self.assertTrue(test_model._select_X_internal()[1].shape[1] == 3)
         self.assertTrue(test_model.duration_fit is not None)
+
 
 
 if __name__ == '__main__':
