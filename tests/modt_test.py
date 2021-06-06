@@ -137,7 +137,20 @@ class TestMoDT(unittest.TestCase):
             self.assertTrue(test_model.duration_fit is not None)
             self.assertTrue(test_model.all_DT_clusters != [])
 
-
+    def test_DBSCAN_init(self):
+        self.set_default_paramas()
+        data_input = pickle.load(open("datasets/breast_cancer_input.np", "rb"))
+        data_target = pickle.load(open("datasets/breast_cancer_target.np", "rb"))
+        self.parameters["X"] = data_input
+        self.parameters["y"] = data_target        
+        self.parameters["initialize_with"] = "pass_method"
+        self.parameters["initialization_method"] = DBSCAN_init(theta_fittig_method="lda",eps=0.9,min_samples=5)
+        n_experts = [1,2,3]
+        for n in n_experts:
+            self.parameters["n_experts"] = n
+            test_model = TestMoDT.fit_modt(**self.parameters)
+            self.assertTrue(test_model.duration_fit is not None)
+            self.assertTrue(test_model.init_labels is not None)
 
     def test_2dim_sanity_check(self):
         self.set_default_paramas()

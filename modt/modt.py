@@ -6,8 +6,7 @@ from scipy.special import softmax
 from sklearn import tree
 from sklearn.preprocessing import StandardScaler
 from sklearn.decomposition import PCA
-from sklearn.cluster import KMeans
-from sklearn.cluster import DBSCAN
+
 from sklearn.ensemble import AdaBoostClassifier
 from sklearn.discriminant_analysis import LinearDiscriminantAnalysis
 from sklearn.linear_model import LogisticRegression
@@ -352,47 +351,47 @@ class MoDT():
 
     #     return self._theta_calculation_lda(X_gate, cluster_labels)
 
-    def _DBSCAN_initialization(self):
-        X, X_gate = self._select_X_internal()
+    # def _DBSCAN_initialization(self):
+    #     X, X_gate = self._select_X_internal()
 
-        db = DBSCAN(eps=0.035, min_samples=25).fit(X)
-        labels = db.labels_
-        n_clusters = len(set(labels)) - (1 if -1 in labels else 0)
-        if n_clusters < self.n_experts:
-            raise Exception("DBSCAN parameters yield only {} clusters but {} required".format(n_clusters, self.n_experts))
-        self.init_labels = labels  # Rename
-        core_samples_mask = np.zeros_like(db.labels_, dtype=bool)
-        core_samples_mask[db.core_sample_indices_] = True
-        mask = core_samples_mask.copy()
+    #     db = DBSCAN(eps=0.035, min_samples=25).fit(X)
+    #     labels = db.labels_
+    #     n_clusters = len(set(labels)) - (1 if -1 in labels else 0)
+    #     if n_clusters < self.n_experts:
+    #         raise Exception("DBSCAN parameters yield only {} clusters but {} required".format(n_clusters, self.n_experts))
+    #     self.init_labels = labels  # Rename
+    #     core_samples_mask = np.zeros_like(db.labels_, dtype=bool)
+    #     core_samples_mask[db.core_sample_indices_] = True
+    #     mask = core_samples_mask.copy()
 
-        # Get only one cluster for each expert, exclude noise cluster (-1) if top cluster
-        unique_labels, counts = np.unique(labels, return_counts=True)
-        top_label_indices = counts.argsort()[-(self.n_experts + 1):][::-1]
-        top_labels = unique_labels[top_label_indices]
-        if -1 in top_labels:
-            top_labels = top_labels[top_labels != -1]
-        else:
-            top_labels = top_labels[:-1]
-        mask[np.isin(labels, top_labels) is False] = False
-        no_small_labels = labels[mask]
+    #     # Get only one cluster for each expert, exclude noise cluster (-1) if top cluster
+    #     unique_labels, counts = np.unique(labels, return_counts=True)
+    #     top_label_indices = counts.argsort()[-(self.n_experts + 1):][::-1]
+    #     top_labels = unique_labels[top_label_indices]
+    #     if -1 in top_labels:
+    #         top_labels = top_labels[top_labels != -1]
+    #     else:
+    #         top_labels = top_labels[:-1]
+    #     mask[np.isin(labels, top_labels) is False] = False
+    #     no_small_labels = labels[mask]
 
-        self.dbscan_mask = mask  # Plotting
+    #     self.dbscan_mask = mask  # Plotting
 
-        no_small_labels_temp = no_small_labels.copy()
-        # Rename clusters starting with 0
-        for number, unique_label in enumerate(top_labels):
-            no_small_labels[no_small_labels_temp == unique_label] = number
+    #     no_small_labels_temp = no_small_labels.copy()
+    #     # Rename clusters starting with 0
+    #     for number, unique_label in enumerate(top_labels):
+    #         no_small_labels[no_small_labels_temp == unique_label] = number
 
-        self.dbscan_selected_labels = no_small_labels
+    #     self.dbscan_selected_labels = no_small_labels
 
-        expert_target_matrix = np.zeros((len(no_small_labels), self.n_experts))
-        expert_target_matrix[np.arange(0, len(no_small_labels)), no_small_labels[np.arange(0, len(no_small_labels))]] = 1
-        self.regression_target = expert_target_matrix
-        lr = LinearRegression(fit_intercept=False).fit(self.X[mask], expert_target_matrix)
-        print("Initialization regression score:", lr.score(self.X[mask], expert_target_matrix))
-        return(lr.coef_.T)
+    #     expert_target_matrix = np.zeros((len(no_small_labels), self.n_experts))
+    #     expert_target_matrix[np.arange(0, len(no_small_labels)), no_small_labels[np.arange(0, len(no_small_labels))]] = 1
+    #     self.regression_target = expert_target_matrix
+    #     lr = LinearRegression(fit_intercept=False).fit(self.X[mask], expert_target_matrix)
+    #     print("Initialization regression score:", lr.score(self.X[mask], expert_target_matrix))
+    #     return(lr.coef_.T)
 
-        #return self._theta_calculation_lda(X_gate[mask],self.dbscan_selected_labels)
+    #     #return self._theta_calculation_lda(X_gate[mask],self.dbscan_selected_labels)
 
     def _boosting_initialization(self, use_max=False):
         X, X_gate = self._select_X_internal()

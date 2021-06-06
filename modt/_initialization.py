@@ -3,6 +3,7 @@ import pandas as pd
 from scipy.spatial import distance
 from sklearn import tree
 from sklearn.cluster import KMeans
+from sklearn.cluster import DBSCAN
 from sklearn.mixture import BayesianGaussianMixture
 from sklearn.discriminant_analysis import LinearDiscriminantAnalysis
 from sklearn.linear_model import LinearRegression
@@ -130,6 +131,46 @@ class KDTmeans_init():
         
         return _fit_theta(self_modt, X_gate, labels, self.theta_fittig_method)
 
+class DBSCAN_init():
+
+    def __init__(self,theta_fittig_method="lda",eps=0.035,min_samples=25):
+        self.theta_fittig_method = theta_fittig_method
+        self.eps = eps
+        self.min_samples = min_samples
+
+    def _calculate_theta(self,self_modt):
+        X, X_gate = self_modt._select_X_internal()
+
+        db = DBSCAN(eps=self.eps, min_samples=self.min_samples).fit(X)
+        labels = db.labels_
+        n_clusters = len(set(labels)) - (1 if -1 in labels else 0)
+        if n_clusters < self_modt.n_experts:
+            raise Exception("DBSCAN parameters yield {} clusters but at least {} required".format(n_clusters, self_modt.n_experts))
+        self_modt.init_labels = labels  
+        core_samples_mask = np.zeros_like(labels, dtype=bool)  # Array of 0
+        #core_samples_mask[db.core_sample_indices_] = True  # Core samples exclude outliers and weak cluster members
+        mask = core_samples_mask
+
+        # Get only one cluster for each expert, exclude noise cluster (-1) if top cluster
+        unique_labels, counts = np.unique(labels, return_counts=True)
+        top_label_indices = counts.argsort()[-(self_modt.n_experts + 1):][::-1]
+        top_labels = unique_labels[top_label_indices]
+        if -1 in top_labels:
+            top_labels = top_labels[top_labels != -1]
+        else:
+            top_labels = top_labels[:-1]
+        mask[np.isin(labels, top_labels)] = True
+        self_modt.dbscan_mask = mask  # Plotting
+        no_small_labels = labels[mask]
+
+        no_small_labels_temp = no_small_labels.copy()
+        # Rename clusters starting with 0
+        for number, unique_label in enumerate(top_labels):
+            no_small_labels[no_small_labels_temp == unique_label] = number
+
+        self_modt.dbscan_selected_labels = no_small_labels
+
+        return _fit_theta(self_modt, X_gate[mask], no_small_labels, self.theta_fittig_method)
 
 class BGM_init():
     def __init__(self,theta_fittig_method,
