@@ -163,6 +163,17 @@ class TestMoDT(unittest.TestCase):
             self.assertTrue(test_model.duration_fit is not None)
             self.assertTrue(test_model.init_labels is not None)
 
+    def test_BGM_init(self):
+        self.set_default_paramas()
+        self.parameters["initialize_with"] = "pass_method"
+        self.parameters["initialization_method"] = BGM_init()
+        n_experts = [1,2,3,10]
+        for n in n_experts:
+            self.parameters["n_experts"] = n
+            test_model = TestMoDT.fit_modt(**self.parameters)
+            self.assertTrue(test_model.duration_fit is not None)
+            self.assertTrue(test_model.init_labels is not None)
+
     def test_2dim_sanity_check(self):
         self.set_default_paramas()
         self.parameters["use_2_dim_gate_based_on"] = None

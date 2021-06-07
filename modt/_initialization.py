@@ -8,6 +8,7 @@ from sklearn.mixture import BayesianGaussianMixture
 from sklearn.ensemble import AdaBoostClassifier
 from sklearn.discriminant_analysis import LinearDiscriminantAnalysis
 from sklearn.linear_model import LinearRegression
+from sklearn.utils.multiclass import unique_labels
 
 
 def _fit_theta(self_modt,X_gate,labels,theta_fittig_method):
@@ -237,14 +238,19 @@ class BGM_init():
         probabilities = bgm.predict_proba(X)
         probabilities[:,bgm.weights_ < self.weight_cutoff] = 0
         labels = np.argmax(probabilities, axis=1)  # Label number range can have gaps
+        
+        # Rename labels starting with 0
+        labels_temp = labels.copy()
+        unique_labels = np.unique(labels_temp)
+        for number, unique_label in enumerate(unique_labels):
+            labels[labels_temp == unique_label] = number
+        self_modt.init_labels = labels
 
         n_experts = np.sum(bgm.weights_ >= self.weight_cutoff)
-
         if self_modt.verbose:
             print("BGM estimates {} experts of max {} in iteration {}".format(n_experts, self_modt.n_experts, bgm.n_iter_))
             if (np.sum(np.sum(probabilities,axis=1) == 0) != 0):
                 print("Warning: Some datapoints have zero weight in the BGM model.")
-
         if n_experts < 2:
             n_experts = 2
             print("BGM estimated less than 2 experts. Resetting to 2. Increasing weight_concentration_prior might yield more experts.")
