@@ -19,7 +19,7 @@ class TestMoDT(unittest.TestCase):
                            "X": self.data_input,
                            "y": self.data_target,
                            "n_experts": 3,
-                           "iterations": 1,
+                           "iterations": 2,
                            "max_depth": 2,
                            "init_learning_rate": 10,
                            "learning_rate_decay": 1,
@@ -146,6 +146,17 @@ class TestMoDT(unittest.TestCase):
         self.parameters["initialize_with"] = "pass_method"
         self.parameters["initialization_method"] = DBSCAN_init(theta_fittig_method="lda",eps=0.9,min_samples=5)
         n_experts = [1,2,3]
+        for n in n_experts:
+            self.parameters["n_experts"] = n
+            test_model = TestMoDT.fit_modt(**self.parameters)
+            self.assertTrue(test_model.duration_fit is not None)
+            self.assertTrue(test_model.init_labels is not None)
+
+    def test_Boosting_init(self):
+        self.set_default_paramas()
+        self.parameters["initialize_with"] = "pass_method"
+        self.parameters["initialization_method"] = Boosting_init()
+        n_experts = [1,2,3,10]
         for n in n_experts:
             self.parameters["n_experts"] = n
             test_model = TestMoDT.fit_modt(**self.parameters)

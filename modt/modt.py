@@ -7,9 +7,6 @@ from sklearn import tree
 from sklearn.preprocessing import StandardScaler
 from sklearn.decomposition import PCA
 
-from sklearn.ensemble import AdaBoostClassifier
-from sklearn.discriminant_analysis import LinearDiscriminantAnalysis
-from sklearn.linear_model import LogisticRegression
 from sklearn.linear_model import Ridge
 from sklearn.linear_model import Lasso
 from sklearn.mixture import GaussianMixture
@@ -93,7 +90,7 @@ class MoDT():
 
         if black_box_algorithm is not None:
             self.y_before_surrogate = self.y
-            self.y = self.transform_y_with_surrogate_model(black_box_algorithm)
+            self.y = self._transform_y_with_surrogate_model(black_box_algorithm)
 
         self.scaler = self._create_scaler(self.X)  # Standardization on input. Scaler also needed for prediction of new observations.
         self.X = self._preprocess_X(self.X)  # Apply standardization and add bias
@@ -393,30 +390,30 @@ class MoDT():
 
     #     #return self._theta_calculation_lda(X_gate[mask],self.dbscan_selected_labels)
 
-    def _boosting_initialization(self, use_max=False):
-        X, X_gate = self._select_X_internal()
+    # def _boosting_initialization(self, use_max=False):
+    #     X, X_gate = self._select_X_internal()
 
-        DTC = tree.DecisionTreeClassifier(max_depth=self.max_depth)
-        clf = AdaBoostClassifier(base_estimator=DTC, n_estimators=self.n_experts)
-        clf.fit(X, self.y)
-        print("AdaBoost model score:", clf.score(X, self.y))
+    #     DTC = tree.DecisionTreeClassifier(max_depth=self.max_depth)
+    #     clf = AdaBoostClassifier(base_estimator=DTC, n_estimators=self.n_experts)
+    #     clf.fit(X, self.y)
+    #     print("AdaBoost model score:", clf.score(X, self.y))
 
-        confidence_correct = np.zeros([self.n_input, self.n_experts])
-        for expert_index in range(0, self.n_experts):
-            dt = clf.estimators_[expert_index]
-            dt_probability = dt.predict_proba(X)
-            confidence_correct[:, expert_index] = dt_probability[np.arange(self.n_input), self.y.flatten().astype(int)]
+    #     confidence_correct = np.zeros([self.n_input, self.n_experts])
+    #     for expert_index in range(0, self.n_experts):
+    #         dt = clf.estimators_[expert_index]
+    #         dt_probability = dt.predict_proba(X)
+    #         confidence_correct[:, expert_index] = dt_probability[np.arange(self.n_input), self.y.flatten().astype(int)]
 
-        if use_max:  # Set the most confident expert to 1; the others to 0.
-            labels = np.argmax(confidence_correct, axis=1)
-            self.init_labels = labels
-            confidence_correct = np.zeros([self.n_input, self.n_experts])
-            confidence_correct[np.arange(0, self.n_input), labels[np.arange(0, self.n_input)]] = 1
+    #     if use_max:  # Set the most confident expert to 1; the others to 0.
+    #         labels = np.argmax(confidence_correct, axis=1)
+    #         self.init_labels = labels
+    #         confidence_correct = np.zeros([self.n_input, self.n_experts])
+    #         confidence_correct[np.arange(0, self.n_input), labels[np.arange(0, self.n_input)]] = 1
 
-        lr = LinearRegression(fit_intercept=False).fit(X, confidence_correct)
-        print("AdaBoost initialization regression score:", lr.score(X_gate, confidence_correct))
+    #     lr = LinearRegression(fit_intercept=False).fit(X, confidence_correct)
+    #     print("AdaBoost initialization regression score:", lr.score(X_gate, confidence_correct))
 
-        return lr.coef_.T
+    #     return lr.coef_.T
 
     def predict_hard_iteration(self, X, iteration, internal=False, disjoint_trees=False):
         if not internal:
@@ -671,7 +668,7 @@ class MoDT():
             print("Estimated experts", estimated_n_components)
         return estimated_n_components
 
-    def transform_y_with_surrogate_model(self, black_box_algorithm):
+    def _transform_y_with_surrogate_model(self, black_box_algorithm):
         from sklearn.neural_network import MLPClassifier
         from sklearn.ensemble import AdaBoostClassifier
         from sklearn.svm import SVC

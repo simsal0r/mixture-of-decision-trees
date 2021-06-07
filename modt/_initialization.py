@@ -5,6 +5,7 @@ from sklearn import tree
 from sklearn.cluster import KMeans
 from sklearn.cluster import DBSCAN
 from sklearn.mixture import BayesianGaussianMixture
+from sklearn.ensemble import AdaBoostClassifier
 from sklearn.discriminant_analysis import LinearDiscriminantAnalysis
 from sklearn.linear_model import LinearRegression
 
@@ -172,14 +173,44 @@ class DBSCAN_init():
 
         return _fit_theta(self_modt, X_gate[mask], no_small_labels, self.theta_fittig_method)
 
+class Boosting_init():
+
+    def __init__(self,theta_fittig_method="lda"):
+        self.theta_fittig_method = theta_fittig_method
+
+    def _calculate_theta(self,self_modt):
+        X, X_gate = self_modt._select_X_internal()
+
+        DTC = tree.DecisionTreeClassifier(max_depth=self_modt.max_depth)
+        clf = AdaBoostClassifier(base_estimator=DTC, n_estimators=self_modt.n_experts)
+        clf.fit(X, self_modt.y)
+        if self_modt.verbose:
+            print("AdaBoost model score:", clf.score(X, self_modt.y))
+
+        confidence_correct = np.zeros([self_modt.n_input, self_modt.n_experts])
+        for expert_index in range(0, self_modt.n_experts):
+            dt = clf.estimators_[expert_index]
+            dt_probability = dt.predict_proba(X)
+            confidence_correct[:, expert_index] = dt_probability[np.arange(self_modt.n_input), self_modt.y.flatten().astype(int)]
+
+            # Set the most confident expert to 1; the others to 0.
+        labels = np.argmax(confidence_correct, axis=1)
+        self_modt.init_labels = labels
+
+        return _fit_theta(self_modt, X_gate, labels, self.theta_fittig_method)
+
+
 class BGM_init():
-    def __init__(self,theta_fittig_method,
-                 n_components=7,covariance_type="full",init_params="random",
-                 max_iter=500, mean_precision_prior=0.8,
+    def __init__(self,
+                 theta_fittig_method="lda",
+                 n_components=7,
+                 covariance_type="full",
+                 init_params="random",
+                 max_iter=500,
+                 mean_precision_prior=0.8,
                  weight_concentration_prior_type="dirichlet_distribution",
                  weight_concentration_prior=0.25,
-                 weight_cutoff=0.05
-        ):
+                 weight_cutoff=0.05):
         self.theta_fittig_method = theta_fittig_method
         self.n_components = n_components
         self.covariance_type = covariance_type 
@@ -194,20 +225,23 @@ class BGM_init():
 
         X, X_gate = self_modt._select_X_internal()
 
-        bgm = BayesianGaussianMixture(n_components=self_modt.n_experts,covariance_type=self.covariance_type,init_params=self.init_params,
-                                max_iter=self.max_iter, mean_precision_prior=self.mean_precision_prior,
-                                weight_concentration_prior_type=self.weight_concentration_prior_type, #dirichlet_distribution->uniform than dirichlet_process
-                                weight_concentration_prior=self.weight_concentration_prior # Lower -> Fewer components
-                                )
+        bgm = BayesianGaussianMixture(n_components=self_modt.n_experts,  # method can result in fewer but not more experts
+                                      covariance_type=self.covariance_type,
+                                      init_params=self.init_params,
+                                      max_iter=self.max_iter,
+                                      mean_precision_prior=self.mean_precision_prior,
+                                      weight_concentration_prior_type=self.weight_concentration_prior_type,  # dirichlet_distribution -> more uniform than dirichlet_process
+                                      weight_concentration_prior=self.weight_concentration_prior  # Lower -> Fewer components
+                                      )
         bgm.fit(X)
         probabilities = bgm.predict_proba(X)
         probabilities[:,bgm.weights_ < self.weight_cutoff] = 0
-        labels = np.argmax(probabilities,axis=1)  # Label number range can have gaps
+        labels = np.argmax(probabilities, axis=1)  # Label number range can have gaps
 
         n_experts = np.sum(bgm.weights_ >= self.weight_cutoff)
 
         if self_modt.verbose:
-            print("BGM estimates {} experts of max {} in iteration {}".format(n_experts,self_modt.n_experts,bgm.n_iter_))
+            print("BGM estimates {} experts of max {} in iteration {}".format(n_experts, self_modt.n_experts, bgm.n_iter_))
             if (np.sum(np.sum(probabilities,axis=1) == 0) != 0):
                 print("Warning: Some datapoints have zero weight in the BGM model.")
 
