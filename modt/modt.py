@@ -1,24 +1,17 @@
 import numpy as np
 import pandas as pd
 from functools import lru_cache
+from timeit import default_timer as timer
+import pickle
+
 from sklearn.linear_model import LinearRegression
 from scipy.special import softmax
 from sklearn import tree
 from sklearn.preprocessing import StandardScaler
 from sklearn.decomposition import PCA
-
 from sklearn.linear_model import Ridge
 from sklearn.linear_model import Lasso
 from sklearn.mixture import GaussianMixture
-
-from timeit import default_timer as timer
-from scipy.spatial import distance
-import pickle
-
-#from ._initialization import _theta_calculation_lda
-#from ._initialization import BGM
-
-#from . import _initialization
 
 
 class MoDT():
@@ -258,16 +251,6 @@ class MoDT():
             initialized_theta = np.random.rand(n_features, self.n_experts)
         elif initialize_with == "pass_method":
             initialized_theta = initialization_method._calculate_theta(self)
-        # elif initialize_with == "kmeans":
-        #     initialized_theta = self._kmeans_initialization()
-        # elif initialize_with == "dbscan":
-        #     initialized_theta = self._DBSCAN_initialization()
-        # elif initialize_with == "kDTmeans":
-        #     initialized_theta = self._kDTmeans_initialization()
-        # elif initialize_with == "adaboost":
-        #     initialized_theta = self._boosting_initialization()
-        # elif initialize_with == "adaboost_max":
-        #     initialized_theta = self._boosting_initialization(use_max=True)
         else:
             raise Exception("Invalid initalization method specified.")
 
@@ -277,144 +260,7 @@ class MoDT():
             print("Duration initialization:", self.duration_initialization)
 
         return initialized_theta
-
-    # def _kmeans_initialization(self):
-
-    #     X, X_gate = self._select_X_internal()
-
-    #     kmeans = KMeans(n_clusters=self.n_experts).fit(X)
-    #     labels = kmeans.labels_
-    #     self.init_labels = labels
-    #     expert_target_matrix = np.zeros((self.n_input, self.n_experts))
-    #     expert_target_matrix[np.arange(0, self.n_input), labels[np.arange(0, self.n_input)]] = 1
-    #     # lr = LinearRegression(fit_intercept=False).fit(X_gate, expert_target_matrix)
-
-    #     # return lr.coef_.T
-    #     return _theta_calculation_lda(self, X_gate, labels)
-
-    # def _kDTmeans_initialization(self, alpha=1, beta=0.05, gamma=0.1):
-
-    #     X, X_gate = self._select_X_internal()
-    #     n_features = X.shape[1]
-
-    #     n_cluster = self.n_experts
-    #     kDTmeans_iterations = 20  # Test 1
-
-    #     kmeans = KMeans(n_clusters=self.n_experts).fit(X)
-    #     labels = kmeans.labels_
-    #     cluster_centers = kmeans.cluster_centers_
-
-    #     self.all_cluster_labels.append(labels)
-    #     self.all_cluster_centers.append(cluster_centers)
-
-    #     for iteration in range(0, kDTmeans_iterations):
-    #         DT_clusters = [None for i in range(n_cluster)]
-    #         updated_cluster_distances = np.zeros((self.n_input, n_cluster))
-
-    #         for cluster_idx in range(0, n_cluster):
-    #             distances = distance.cdist([cluster_centers[cluster_idx, :]], X, 'euclidean').flatten()
-    #             weights = 1.0 / (distances**alpha + beta)
-
-    #             DT_clusters[cluster_idx] = tree.DecisionTreeClassifier(max_depth=2)
-    #             DT_clusters[cluster_idx].fit(X=X, y=self.y, sample_weight=weights)
-
-    #             confidence = DT_clusters[cluster_idx].predict_proba(X=X)[np.arange(self.n_input), self.y]
-    #             updated_cluster_distances[:, cluster_idx] = distances / (confidence + gamma)
-
-    #         self.all_DT_clusters.append(DT_clusters.copy())
-    #         cluster_labels = np.argmin(updated_cluster_distances, axis=1)
-    #         new_centers = np.zeros((n_cluster, n_features))
-
-    #         for cluster_idx in range(0, n_cluster):
-    #             new_centers[cluster_idx, :] = np.mean(X[cluster_labels == cluster_idx, :], axis=0)
-
-    #         # Plotting & Debugging #
-    #         DT_predictions = np.zeros((self.n_input, n_cluster))
-    #         for cluster_idx in range(0, n_cluster):
-    #             DT_predictions[:, cluster_idx] = DT_clusters[cluster_idx].predict(X=X)
-    #         predicted_labels = DT_predictions[np.arange(self.n_input), cluster_labels]
-    #         accuracy = (np.count_nonzero(predicted_labels.astype(int) == self.y) / self.n_input)
-
-    #         self.all_clustering_accuracies.append(accuracy)
-    #         self.all_cluster_labels.append(cluster_labels)
-    #         self.all_cluster_centers.append(new_centers)
-    #         # ----- #
-
-    #         if np.allclose(cluster_centers, new_centers):
-    #             print("Convergence at iteration", iteration)
-    #             break
-    #         else:
-    #             cluster_centers = new_centers
-
-    #     return self._theta_calculation_lda(X_gate, cluster_labels)
-
-    # def _DBSCAN_initialization(self):
-    #     X, X_gate = self._select_X_internal()
-
-    #     db = DBSCAN(eps=0.035, min_samples=25).fit(X)
-    #     labels = db.labels_
-    #     n_clusters = len(set(labels)) - (1 if -1 in labels else 0)
-    #     if n_clusters < self.n_experts:
-    #         raise Exception("DBSCAN parameters yield only {} clusters but {} required".format(n_clusters, self.n_experts))
-    #     self.init_labels = labels  # Rename
-    #     core_samples_mask = np.zeros_like(db.labels_, dtype=bool)
-    #     core_samples_mask[db.core_sample_indices_] = True
-    #     mask = core_samples_mask.copy()
-
-    #     # Get only one cluster for each expert, exclude noise cluster (-1) if top cluster
-    #     unique_labels, counts = np.unique(labels, return_counts=True)
-    #     top_label_indices = counts.argsort()[-(self.n_experts + 1):][::-1]
-    #     top_labels = unique_labels[top_label_indices]
-    #     if -1 in top_labels:
-    #         top_labels = top_labels[top_labels != -1]
-    #     else:
-    #         top_labels = top_labels[:-1]
-    #     mask[np.isin(labels, top_labels) is False] = False
-    #     no_small_labels = labels[mask]
-
-    #     self.dbscan_mask = mask  # Plotting
-
-    #     no_small_labels_temp = no_small_labels.copy()
-    #     # Rename clusters starting with 0
-    #     for number, unique_label in enumerate(top_labels):
-    #         no_small_labels[no_small_labels_temp == unique_label] = number
-
-    #     self.dbscan_selected_labels = no_small_labels
-
-    #     expert_target_matrix = np.zeros((len(no_small_labels), self.n_experts))
-    #     expert_target_matrix[np.arange(0, len(no_small_labels)), no_small_labels[np.arange(0, len(no_small_labels))]] = 1
-    #     self.regression_target = expert_target_matrix
-    #     lr = LinearRegression(fit_intercept=False).fit(self.X[mask], expert_target_matrix)
-    #     print("Initialization regression score:", lr.score(self.X[mask], expert_target_matrix))
-    #     return(lr.coef_.T)
-
-    #     #return self._theta_calculation_lda(X_gate[mask],self.dbscan_selected_labels)
-
-    # def _boosting_initialization(self, use_max=False):
-    #     X, X_gate = self._select_X_internal()
-
-    #     DTC = tree.DecisionTreeClassifier(max_depth=self.max_depth)
-    #     clf = AdaBoostClassifier(base_estimator=DTC, n_estimators=self.n_experts)
-    #     clf.fit(X, self.y)
-    #     print("AdaBoost model score:", clf.score(X, self.y))
-
-    #     confidence_correct = np.zeros([self.n_input, self.n_experts])
-    #     for expert_index in range(0, self.n_experts):
-    #         dt = clf.estimators_[expert_index]
-    #         dt_probability = dt.predict_proba(X)
-    #         confidence_correct[:, expert_index] = dt_probability[np.arange(self.n_input), self.y.flatten().astype(int)]
-
-    #     if use_max:  # Set the most confident expert to 1; the others to 0.
-    #         labels = np.argmax(confidence_correct, axis=1)
-    #         self.init_labels = labels
-    #         confidence_correct = np.zeros([self.n_input, self.n_experts])
-    #         confidence_correct[np.arange(0, self.n_input), labels[np.arange(0, self.n_input)]] = 1
-
-    #     lr = LinearRegression(fit_intercept=False).fit(X, confidence_correct)
-    #     print("AdaBoost initialization regression score:", lr.score(X_gate, confidence_correct))
-
-    #     return lr.coef_.T
-
+ 
     def predict_hard_iteration(self, X, iteration, internal=False, disjoint_trees=False):
         if not internal:
             X = self._preprocess_X(X)
