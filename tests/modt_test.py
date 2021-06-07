@@ -237,7 +237,10 @@ class TestMoDT(unittest.TestCase):
         self.assertTrue(test_model._select_X_internal()[1].shape[1] == 3)
         self.assertTrue(test_model.duration_fit is not None)
 
-
+    def test_predit(self):
+        self.set_default_paramas()
+        test_model = TestMoDT.fit_modt(**self.parameters)
+        self.assertTrue(len(test_model.predict(X=self.data_input)) == len(self.data_input))
 
 if __name__ == '__main__':
     unittest.main()

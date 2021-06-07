@@ -47,6 +47,8 @@ class MoDT():
         self.DT_experts = None
         self.DT_experts_disjoint = None
         self.all_DTs = []
+        self.all_theta_gating = []
+        self.all_gating_values = []
         self.posterior_probabilities = None
         self.confidence_experts = None
         self.no_improvements = 0  # Counter for adding noise
@@ -57,10 +59,7 @@ class MoDT():
         self.duration_fit = None
         self.duration_initialization = None
         self.init_labels = None
-        self.all_theta_gating = []
-        self.all_gating_values = []
         self.dbscan_mask = None
-        self.regression_target = None
         self.dbscan_selected_labels = None
         # Debugging & Plotting kDTmeans
         self.all_DT_clusters = []
@@ -261,7 +260,9 @@ class MoDT():
 
         return initialized_theta
  
-    def predict_hard_iteration(self, X, iteration, internal=False, disjoint_trees=False):
+    def predict(self, X, iteration=None, internal=False, disjoint_trees=False):
+        if iteration is None:
+            iteration = self.iterations - 1
         if not internal:
             X = self._preprocess_X(X)
         if self.use_2_dim_gate_based_on is not None:
@@ -281,18 +282,16 @@ class MoDT():
         predictions = [DTs[tree_index].predict(X) for tree_index in range(0, len(DTs))]
         return np.array([predictions[gate][index] for index, gate in enumerate(selected_gates)]).astype("int")
 
-    def predict_hard(self, X, disjoint_trees=False):  # Final iteration
-        if disjoint_trees:
-            return self.predict_hard_iteration(X, iteration=self.iterations - 1, disjoint_trees=True)
-        else:
-            return self.predict_hard_iteration(X, iteration=self.iterations - 1)
-
-    def predict_with_expert_iteration(self, X, expert, iteration):
+    def predict_with_expert(self, X, expert, iteration=None):
+        if iteration is None:
+            iteration = self.iterations - 1
         X = self._preprocess_X(X)
         DTs = self.all_DTs[iteration]
         return DTs[expert].predict(X)
 
-    def get_expert_iteration(self, X, iteration, internal=False):
+    def get_expert(self, X, iteration=None, internal=False):
+        if iteration is None:
+            iteration = self.iterations - 1        
         if not internal:
             X = self._preprocess_X(X)
             if self.use_2_dim_gate_based_on is not None:
