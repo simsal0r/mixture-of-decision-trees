@@ -89,7 +89,7 @@ class MoDT():
         self.X = self._preprocess_X(self.X)  # Apply standardization and add bias
 
         self.X_top_2_mask = self._get_2_dim_feature_importance_mask()  # Always calculate Top 2 features for plotting
-        self.X_2_dim = self.X[:, self.X_top_2_mask]
+        self.X_2_dim = self.X[:, self.X_top_2_mask]  # For plotting
 
         if self.use_2_dim_gate_based_on is not None:
             if self.use_2_dim_gate_based_on == "feature_importance":
@@ -307,27 +307,32 @@ class MoDT():
         _, X_gate = self._select_X_internal()
 
         for iteration in range(0, self.iterations):
-
             self._e_step(X_gate, first_iteration=(iteration == 0))
-            self._m_step(X_gate, iteration, first_iteration=(iteration == 0), optimization_method=optimization_method,
+            self._log_values_to_array()  # Theta, DTs and gating values are in sync
+            if iteration == self.iterations - 1:  # We can skip last M step because DT would not be re-trained again anyway
+                break
+            self._m_step(X_gate,
+                         iteration,
+                         first_iteration=(iteration == 0),
+                         optimization_method=optimization_method,
                          use_posterior=use_posterior,
-                         add_noise=add_noise, **optimization_kwargs)
-            self._log_values_to_array()
-
+                         add_noise=add_noise,
+                         **optimization_kwargs)
+            
         end = timer()
         self.duration_fit = end - start
-        print("Duration EM fit:", self.duration_fit)
+        if self.verbose:
+            print("Duration EM fit:", self.duration_fit)
 
     def _e_step(self, X_gate, first_iteration):
         self.gating_values = self._gating_softmax(X=X_gate, theta_gating=self.theta_gating)
         self.gating_values = np.nan_to_num(self.gating_values)
-
         self._train_trees()
 
         self.posterior_probabilities = self._posterior_probabilties(self.DT_experts)
 
-        if first_iteration:
-            self._log_values_to_array()
+        # if first_iteration:
+        #     self._log_values_to_array()
 
     def _m_step(self, X_gate, iteration, first_iteration, optimization_method, use_posterior, add_noise, **optimization_kwargs):
         theta_new = self._update_theta(X_gate, optimization_method, use_posterior, **optimization_kwargs)
@@ -371,6 +376,12 @@ class MoDT():
             DT_experts[index_expert] = tree.DecisionTreeClassifier(max_depth=self.max_depth)
             DT_experts[index_expert].fit(X=self.X, y=self.y, sample_weight=self.gating_values[:, index_expert])  # Training weighted by gating values
         self.DT_experts = DT_experts
+
+    def _log_values_to_array(self):
+        # Plotting & Debugging
+        self.all_theta_gating.append(self.theta_gating.copy())  # TODO: Theta and gating values not in sync
+        self.all_DTs.append(self.DT_experts.copy())
+        self.all_gating_values.append(self.gating_values.copy())
 
     def train_disjoint_trees(self, tree_algorithm="sklearn"):
         # DTs trained with one-hot gates as weights
@@ -472,12 +483,6 @@ class MoDT():
 
         multiplication = self.gating_values * confidence_correct
         return(multiplication / np.expand_dims(np.sum(multiplication, axis=1), axis=1))
-
-    def _log_values_to_array(self):
-        # Plotting & Debugging
-        self.all_theta_gating.append(self.theta_gating.copy())  # TODO: Theta and gating values not in sync
-        self.all_DTs.append(self.DT_experts.copy())
-        self.all_gating_values.append(self.gating_values.copy())
 
     @lru_cache(maxsize=100)
     def _accuracy_score(self, iteration):
