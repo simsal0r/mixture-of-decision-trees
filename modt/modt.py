@@ -33,6 +33,7 @@ class MoDT():
                  class_names=None):
 
         self.verbose = True
+        self.verbose_detailed = False
         self.X_contains_categorical = False
 
         self.n_features_of_X = X.shape[1]
@@ -49,6 +50,8 @@ class MoDT():
         self.all_DTs = []
         self.all_theta_gating = []
         self.all_gating_values = []
+        self.all_accuracies = []
+        self.best_iteration = None
         self.posterior_probabilities = None
         self.confidence_experts = None
         self.no_improvements = 0  # Counter for adding noise
@@ -70,8 +73,8 @@ class MoDT():
 
         self._check_argument_validity()
 
-        (self.X,
-         self.X_original,
+        (self.X,  # Bias and standardization will be added
+         self.X_original,  # Original input as numpy array 
          self.X_original_pd,
          self.X_one_hot,
          self.y,
@@ -87,8 +90,8 @@ class MoDT():
         self.scaler = self._create_scaler(self.X)  # Standardization on input. Scaler also needed for prediction of new observations.
         self.X = self._preprocess_X(self.X)  # Apply standardization and add bias
 
-        self.X_top_2_mask = self._get_2_dim_feature_importance_mask()  # Always calculate Top 2 features for plotting
-        self.X_2_dim = self.X[:, self.X_top_2_mask]  # For plotting
+        self.X_top_2_mask = self._get_2_dim_feature_importance_mask()  # Always calculate Top 2 features for plotting; 2D + Bias
+        self.X_2_dim = self.X[:, self.X_top_2_mask]  # For plotting; 2D + bias; components in case of PCA
 
         if self.use_2_dim_gate_based_on is not None:
             if self.use_2_dim_gate_based_on == "feature_importance":
@@ -236,6 +239,7 @@ class MoDT():
         return(StandardScaler().fit(X))
 
     def _preprocess_X(self, X):
+        """Perform standardization and add bias."""
         X = self.scaler.transform(X)
         return np.append(X, np.ones([X.shape[0], 1]), axis=1)  # Add bias
 
@@ -260,44 +264,83 @@ class MoDT():
 
         return initialized_theta
  
-    def predict(self, X, iteration=None, internal=False, disjoint_trees=False):
-        if iteration is None:
+    def predict_old(self, X, iteration="best", transform=True, disjoint_trees=False):
+        if iteration == "best":
             iteration = self.iterations - 1
-        if not internal:
-            X = self._preprocess_X(X)
-        if self.use_2_dim_gate_based_on is not None:
-            X_gate = self._transform_X_into_2_dim_for_prediction(X, method=self.use_2_dim_gate_based_on)
+        if disjoint_trees:
+            X_gate = self._preprocess_X(X)
+            if self.use_2_dim_gate_based_on is not None:
+                X_gate = self._transform_X_into_2_dim_for_prediction(X_gate, method=self.use_2_dim_gate_based_on)
         else:
-            X_gate = X
+            if transform:
+                X = self._preprocess_X(X)
+            if self.use_2_dim_gate_based_on is not None:
+                X_gate = self._transform_X_into_2_dim_for_prediction(X, method=self.use_2_dim_gate_based_on)
+            else:
+                X_gate = X
 
-        # if disjoint_trees:
-        #     DTs = self.DT_experts_disjoint
-        #     gating = self._gating_softmax(X_gate,self.all_theta_gating[self.iterations-1])
-        #     selected_gates = np.argmax(gating,axis=1)
-        # else:
-        DTs = self.all_DTs[iteration]
+        if disjoint_trees:
+            DTs = self.DT_experts_disjoint
+        else:
+            DTs = self.all_DTs[iteration]
+
         gating = self._gating_softmax(X_gate, self.all_theta_gating[iteration])
         selected_gates = np.argmax(gating, axis=1)
 
         predictions = [DTs[tree_index].predict(X) for tree_index in range(0, len(DTs))]
         return np.array([predictions[gate][index] for index, gate in enumerate(selected_gates)]).astype("int")
 
-    def predict_with_expert(self, X, expert, iteration=None):
-        if iteration is None:
-            iteration = self.iterations - 1
+    def predict(self, X, iteration="best"):
+        if iteration == "best":
+            iteration = self.best_iteration
+        X_gate = self._preprocess_X(X)
+        if self.use_2_dim_gate_based_on is not None:  # feature importance or PCA
+            X_gate = self._transform_X_into_2_dim_for_prediction(X_gate, method=self.use_2_dim_gate_based_on)
+
+        DTs = self.DT_experts_disjoint        
+        gating = self._gating_softmax(X_gate, self.all_theta_gating[iteration])
+        selected_gates = np.argmax(gating, axis=1)
+
+        predictions = [DTs[tree_index].predict(X) for tree_index in range(0, len(DTs))]
+        return np.array([predictions[gate][index] for index, gate in enumerate(selected_gates)]).astype("int")
+
+    def predict_internal(self,iteration):
+        if self.use_2_dim_gate_based_on is not None:  # feature importance or PCA
+            X_gate = self._transform_X_into_2_dim_for_prediction(self.X, method=self.use_2_dim_gate_based_on)
+        else:
+            X_gate = self.X
+
+        DTs = self.all_DTs[iteration]
+        gating = self._gating_softmax(X_gate, self.all_theta_gating[iteration])
+        selected_gates = np.argmax(gating, axis=1)
+
+        predictions = [DTs[tree_index].predict(self.X) for tree_index in range(0, len(DTs))]
+        return np.array([predictions[gate][index] for index, gate in enumerate(selected_gates)]).astype("int")
+
+
+    # def predict_disjoint(self, X):
+    #     """Wrapper for disjoint predictions."""
+
+    #     if self.DT_experts_disjoint is None:
+    #         raise Exception("Disjoint DTs must be trained.")
+    #     return self.predict(X, transform=False, disjoint_trees=True)
+
+    def predict_with_expert(self, X, expert, iteration="best"):
+        if iteration == "best":
+            iteration = self.best_iteration
         X = self._preprocess_X(X)
         DTs = self.all_DTs[iteration]
         return DTs[expert].predict(X)
 
-    def get_expert(self, X, iteration=None, internal=False):
-        if iteration is None:
-            iteration = self.iterations - 1        
+    def get_expert(self, X_gate, iteration="best", internal=False):
+        if iteration == "best":
+            iteration = self.best_iteration        
         if not internal:
-            X = self._preprocess_X(X)
+            X_gate = self._preprocess_X(X_gate)
             if self.use_2_dim_gate_based_on is not None:
-                X = self._transform_X_into_2_dim_for_prediction(X, method=self.use_2_dim_gate_based_on)
+                X_gate = self._transform_X_into_2_dim_for_prediction(X_gate, method=self.use_2_dim_gate_based_on)
 
-        gating = self._gating_softmax(X, self.all_theta_gating[iteration])
+        gating = self._gating_softmax(X_gate, self.all_theta_gating[iteration])
         return np.argmax(gating, axis=1)
 
     def fit(self, optimization_method="default", add_noise=False, use_posterior=False, **optimization_kwargs):
@@ -307,16 +350,21 @@ class MoDT():
 
         for iteration in range(0, self.iterations):
             self._e_step(X_gate, first_iteration=(iteration == 0))
-            self._log_values_to_array()  # Theta, DTs and gating values are in sync
-            if iteration == self.iterations - 1:  # We can skip last M step because DT would not be re-trained again anyway
-                break
-            self._m_step(X_gate,
-                         iteration,
-                         first_iteration=(iteration == 0),
-                         optimization_method=optimization_method,
-                         use_posterior=use_posterior,
-                         add_noise=add_noise,
-                         **optimization_kwargs)
+
+            self._log_values_to_array()  # After E step: Theta, DTs and gating values are in sync
+            self.all_accuracies.append(self.accuracy_score(iteration=iteration))
+
+            if iteration != self.iterations - 1:  # We can skip last M step because DT would not be re-trained again anyway
+                self._m_step(X_gate,
+                            iteration,
+                            first_iteration=(iteration == 0),
+                            optimization_method=optimization_method,
+                            use_posterior=use_posterior,
+                            add_noise=add_noise,
+                            **optimization_kwargs)
+
+        self.best_iteration = np.argmax(self.all_accuracies)
+        self.train_disjoint_trees(iteration=self.best_iteration, tree_algorithm="sklearn",)
             
         end = timer()
         self.duration_fit = end - start
@@ -363,7 +411,7 @@ class MoDT():
         else:
             raise Exception("Invalid opimization method selected.")
 
-        if self.verbose is True:
+        if self.verbose and self.verbose_detailed:
             score = model.score(X_gate, optimization_target)
             print("Score of {} = {}".format(optimization_method, score))
 
@@ -382,9 +430,10 @@ class MoDT():
         self.all_DTs.append(self.DT_experts.copy())
         self.all_gating_values.append(self.gating_values.copy())
 
-    def train_disjoint_trees(self, tree_algorithm="sklearn"):
-        # DTs trained with one-hot gates as weights
-        gate = np.argmax(self.gating_values, axis=1)
+    def train_disjoint_trees(self, iteration, tree_algorithm="sklearn"):
+        """Train DTs with one-hot gates as weights""" 
+        gating_values = self.all_gating_values[iteration]
+        gate = np.argmax(gating_values, axis=1)
         gating_values_one_hot = np.zeros([self.n_input, self.n_experts])
         gating_values_one_hot[np.arange(0, self.n_input), gate] = 1
 
@@ -483,14 +532,13 @@ class MoDT():
         multiplication = self.gating_values * confidence_correct
         return(multiplication / np.expand_dims(np.sum(multiplication, axis=1), axis=1))
 
-    @lru_cache(maxsize=100)
-    def _accuracy_score(self, iteration):
-        predicted_labels = self.predict_hard_iteration(self.X, iteration, internal=True)
+    def accuracy_score(self, iteration):
+        predicted_labels = self.predict_internal(iteration)
         accuracy = (np.count_nonzero(predicted_labels.astype(int) == self.y) / self.n_input)
         return accuracy
 
-    def _accuracy_score_disjoint(self):
-        predicted_labels = self.predict_hard_iteration(self.X_original, iteration=None, internal=True, disjoint_trees=True)
+    def accuracy_score_disjoint(self):
+        predicted_labels = self.predict(self.X_original, iteration="best")
         accuracy = (np.count_nonzero(predicted_labels.astype(int) == self.y) / self.n_input)
         return accuracy
 
