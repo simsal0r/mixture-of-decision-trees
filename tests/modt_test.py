@@ -93,6 +93,28 @@ class TestMoDT(unittest.TestCase):
         self.parameters["n_experts"] = 3
         self.assertTrue(TestMoDT.fit_modt(**self.parameters).duration_fit is not None)
 
+    def test_pandas_input(self):
+        self.set_default_paramas()
+        data_input = pickle.load(open("datasets/banknote_input.pd", "rb"))
+        data_target = pickle.load(open("datasets/banknote_target.pd", "rb"))
+        self.parameters["X"] = data_input
+        self.parameters["y"] = data_target
+
+        test_model = TestMoDT.fit_modt(**self.parameters)
+        self.assertTrue(test_model.duration_fit is not None)
+        self.assertTrue(test_model.predict(data_input) is not None)         
+
+    def test_pandas_input_categorical(self):
+        self.set_default_paramas()
+        data_input = pickle.load(open("datasets/adult_input.pd", "rb"))
+        data_target = pickle.load(open("datasets/adult_target.pd", "rb"))
+        self.parameters["X"] = data_input
+        self.parameters["y"] = data_target
+
+        test_model = TestMoDT.fit_modt(**self.parameters)
+        self.assertTrue(test_model.duration_fit is not None)
+        self.assertTrue(test_model.predict(data_input) is not None)     
+
     def test_kmeans_init(self):
         self.set_default_paramas()
         self.parameters["initialize_with"] = "pass_method"

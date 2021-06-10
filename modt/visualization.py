@@ -2,9 +2,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 from sklearn import tree
 
-def visualize_gating(predictor,
-                     X,
-                     y,
+def visualize_gating(modt,
                      iteration,
                      ax=None,
                      cmap='rainbow',
@@ -15,6 +13,14 @@ def visualize_gating(predictor,
                      axis_ticks=False):
     #plt.figure(figsize=(8,4))
     ax = plt.gca()
+    y = modt.y
+
+    if modt.use_2_dim_gate_based_on is not None:
+        X = modt.X_2_dim
+    else:
+        X = modt.X_original
+        if X.shape[1] != 2:
+            raise ValueError("X must have 2 dimensions for visualization.")
     
     # Plot the training points
     if enable_scatter:
@@ -42,9 +48,12 @@ def visualize_gating(predictor,
                          np.linspace(*ylim, num=200))
 
     grid = np.c_[xx.ravel(), yy.ravel()]
-    # grid = np.append(grid, np.ones([grid.shape[0], 1]),axis=1) #Bias
 
-    Z = predictor(grid, iteration, internal=False).reshape(xx.shape)
+    if modt.use_2_dim_gate_based_on is not None:
+        grid = np.append(grid, np.ones([grid.shape[0], 1]),axis=1) # Bias
+        Z = modt.get_expert(grid, iteration, internal=True).reshape(xx.shape)
+    else:
+        Z = modt.get_expert(grid, iteration, internal=False).reshape(xx.shape)
 
     # Create a color plot with the results
     n_classes = len(np.unique(Z))
@@ -116,7 +125,10 @@ def plot_disjoint_dt(modt, expert, tree_algorithm="sklearn", size=(15,10), featu
 
     if tree_algorithm == "sklearn":
         plt.figure(figsize=size)
-        tree.plot_tree(modt.DT_experts_disjoint[expert], feature_names=feature_names, class_names=class_names, filled=True, rounded = True)
+        try:  # Plotting fails if filled=True and tree empty
+            tree.plot_tree(modt.DT_experts_disjoint[expert], feature_names=feature_names, class_names=class_names, filled=True, rounded=True)
+        except: 
+            tree.plot_tree(modt.DT_experts_disjoint[expert])
 
     elif tree_algorithm == "optimal_trees":
         for dt_tree in modt.DT_experts_disjoint:

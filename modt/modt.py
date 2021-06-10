@@ -76,7 +76,7 @@ class MoDT():
         (self.X,  # Bias and standardization will be added
          self.X_original,  # Original input as numpy array 
          self.X_original_pd,
-         self.X_one_hot,
+         self.X_one_hot, # TODO: Remove
          self.y,
          self.y_original,
          self.feature_names,
@@ -122,9 +122,7 @@ class MoDT():
             # Categorical treatment
             if np.intersect1d(['object', 'category'], X.dtypes.values.astype(str)).size > 0:
                 self.X_contains_categorical = True
-                X_one_hot = pd.get_dummies(X, columns=list(X.select_dtypes(include=['object', 'category']).columns))
-                X_one_hot = np.array(X_one_hot)
-                X_new = X_one_hot
+                X_new = self._one_hot_encode(X)
             else:
                 X_new = np.array(X)
             X_original = np.array(X)
@@ -166,6 +164,11 @@ class MoDT():
             class_names_new = class_names_new.astype(str)
 
         return X_new, X_original, X_original_pd, X_one_hot, y_new, y_original, feature_names_new, class_names_new
+
+    def _one_hot_encode(self, X):
+        X_one_hot = pd.get_dummies(X, columns=list(X.select_dtypes(include=['object', 'category']).columns))
+        X_one_hot = np.array(X_one_hot)
+        return X_one_hot
 
     def _get_2_dim_feature_importance_mask(self):
         clf = tree.DecisionTreeClassifier()
@@ -264,35 +267,11 @@ class MoDT():
 
         return initialized_theta
  
-    def predict_old(self, X, iteration="best", transform=True, disjoint_trees=False):
-        if iteration == "best":
-            iteration = self.iterations - 1
-        if disjoint_trees:
-            X_gate = self._preprocess_X(X)
-            if self.use_2_dim_gate_based_on is not None:
-                X_gate = self._transform_X_into_2_dim_for_prediction(X_gate, method=self.use_2_dim_gate_based_on)
-        else:
-            if transform:
-                X = self._preprocess_X(X)
-            if self.use_2_dim_gate_based_on is not None:
-                X_gate = self._transform_X_into_2_dim_for_prediction(X, method=self.use_2_dim_gate_based_on)
-            else:
-                X_gate = X
+    def predict(self, X):
+        iteration = self.best_iteration
 
-        if disjoint_trees:
-            DTs = self.DT_experts_disjoint
-        else:
-            DTs = self.all_DTs[iteration]
-
-        gating = self._gating_softmax(X_gate, self.all_theta_gating[iteration])
-        selected_gates = np.argmax(gating, axis=1)
-
-        predictions = [DTs[tree_index].predict(X) for tree_index in range(0, len(DTs))]
-        return np.array([predictions[gate][index] for index, gate in enumerate(selected_gates)]).astype("int")
-
-    def predict(self, X, iteration="best"):
-        if iteration == "best":
-            iteration = self.best_iteration
+        if self.X_contains_categorical:
+            X = self._one_hot_encode(X)
         X_gate = self._preprocess_X(X)
         if self.use_2_dim_gate_based_on is not None:  # feature importance or PCA
             X_gate = self._transform_X_into_2_dim_for_prediction(X_gate, method=self.use_2_dim_gate_based_on)
@@ -364,7 +343,7 @@ class MoDT():
                             **optimization_kwargs)
 
         self.best_iteration = np.argmax(self.all_accuracies)
-        self.train_disjoint_trees(iteration=self.best_iteration, tree_algorithm="sklearn",)
+        self.train_disjoint_trees(iteration=self.best_iteration, tree_algorithm="sklearn")
             
         end = timer()
         self.duration_fit = end - start
@@ -434,22 +413,22 @@ class MoDT():
         """Train DTs with one-hot gates as weights""" 
         gating_values = self.all_gating_values[iteration]
         gate = np.argmax(gating_values, axis=1)
-        gating_values_one_hot = np.zeros([self.n_input, self.n_experts])
-        gating_values_one_hot[np.arange(0, self.n_input), gate] = 1
+        gating_values_hard = np.zeros([self.n_input, self.n_experts])
+        gating_values_hard[np.arange(0, self.n_input), gate] = 1
 
         DT_experts_disjoint = [None for i in range(self.n_experts)]
         if tree_algorithm == "sklearn":
             if self.X_contains_categorical:
-                X = self.X_one_hot
+                X = self._one_hot_encode(self.X_original_pd)
             else:
                 X = self.X_original
             for index_expert in range(0, self.n_experts):
                 DT_experts_disjoint[index_expert] = tree.DecisionTreeClassifier(max_depth=self.max_depth)
-                DT_experts_disjoint[index_expert].fit(X=X, y=self.y, sample_weight=gating_values_one_hot[:, index_expert])
+                DT_experts_disjoint[index_expert].fit(X=X, y=self.y, sample_weight=gating_values_hard[:, index_expert])
         elif tree_algorithm == "optimal_trees":
             from interpretableai import iai
             for index_expert in range(0, self.n_experts):
-                mask = gating_values_one_hot[:, index_expert] == 1
+                mask = gating_values_hard[:, index_expert] == 1
                 X = self.X_original_pd[mask].copy()
 
                 X.loc[:, X.dtypes == 'object'] = X.select_dtypes(['object']).apply(lambda x: x.astype('category'))  # Optimal trees cant handle object dtypes
@@ -464,7 +443,7 @@ class MoDT():
         elif tree_algorithm == "h2o":
             for index_expert in range(0, self.n_experts):
                 DT_experts_disjoint[index_expert] = tree.DecisionTreeClassifier(max_depth=self.max_depth)
-                DT_experts_disjoint[index_expert].fit(X=self.X_original, y=self.y, sample_weight=gating_values_one_hot[:, index_expert])
+                DT_experts_disjoint[index_expert].fit(X=self.X_original, y=self.y, sample_weight=gating_values_hard[:, index_expert])
         else:
             raise Exception("Invalid tree algorithm.")
 
@@ -538,7 +517,11 @@ class MoDT():
         return accuracy
 
     def accuracy_score_disjoint(self):
-        predicted_labels = self.predict(self.X_original, iteration="best")
+        if self.X_contains_categorical:
+            X = self.X_original_pd
+        else:
+            X = self.X_original
+        predicted_labels = self.predict(X)
         accuracy = (np.count_nonzero(predicted_labels.astype(int) == self.y) / self.n_input)
         return accuracy
 

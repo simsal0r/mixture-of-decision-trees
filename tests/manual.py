@@ -7,8 +7,11 @@ from modt._initialization import *
 from modt.visualization import *
 
 
-data_input = pickle.load(open("datasets/generated6_input.np", "rb"))
-data_target = pickle.load(open("datasets/generated6_target.np", "rb"))
+# data_input = pickle.load(open("datasets/generated6_input.np", "rb"))
+# data_target = pickle.load(open("datasets/generated6_target.np", "rb"))
+
+data_input = pickle.load(open("datasets/adult_input.pd", "rb"))
+data_target = pickle.load(open("datasets/adult_target.pd", "rb"))
 
 parameters = {
     "X": data_input,
@@ -35,8 +38,7 @@ parameters_fit = {
 
 
 modt = MoDT(**parameters)
-#print(modt.learn_rate)
+
 modt.fit(**parameters_fit)
 
-#modt.train_disjoint_trees()
 #visualize_decision_area(modt.predict_disjoint, modt.X_original, modt.y)
