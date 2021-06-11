@@ -41,4 +41,6 @@ modt = MoDT(**parameters)
 
 modt.fit(**parameters_fit)
 
+print(modt.score(data_input, data_target))
+
 #visualize_decision_area(modt.predict_disjoint, modt.X_original, modt.y)

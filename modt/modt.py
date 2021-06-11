@@ -115,10 +115,8 @@ class MoDT():
         X_one_hot = None
         X_original_pd = None
         feature_names_new = None
-        class_names_new = None
-        # X
-        # Pandas
-        if isinstance(X, pd.core.frame.DataFrame):
+
+        if isinstance(X, pd.core.frame.DataFrame):  # Pandas
             # Categorical treatment
             if np.intersect1d(['object', 'category'], X.dtypes.values.astype(str)).size > 0:
                 self.X_contains_categorical = True
@@ -128,31 +126,15 @@ class MoDT():
             X_original = np.array(X)
             X_original_pd = X
             feature_names_new = np.array(X.columns)
-        # Numpy
-        elif isinstance(X, np.ndarray):
+
+        elif isinstance(X, np.ndarray):  # Numpy
             X_new = X
             X_original = X
             # TODO: Insert categorical treatment
         else:
             raise Exception("X must be Pandas DataFrame or Numpy array.")
 
-        # Y
-        # Pandas
-        if isinstance(y, pd.core.series.Series):
-            y_new, class_names = pd.factorize(y)
-            class_names_new = np.array(class_names)
-        elif isinstance(y, pd.core.frame.DataFrame):
-            if y.columns.size > 1:
-                raise Exception("y has more than one column.")
-            y = y.iloc[:, 0]
-            y_new, class_names = pd.factorize(y)
-            class_names_new = np.array(class_names)
-        # Numpy
-        elif isinstance(y, np.ndarray):
-            y_new = pd.factorize(y)[0]
-        else:
-            raise Exception("y must be Pandas series Pandas DataFrame or Numpy array.")
-        y_original = y
+        y_new, y_original, class_names_new = self._interpret_input_y(y)
 
         if feature_names is not None:
             if len(feature_names) != X.shape[1]:
@@ -164,6 +146,26 @@ class MoDT():
             class_names_new = class_names_new.astype(str)
 
         return X_new, X_original, X_original_pd, X_one_hot, y_new, y_original, feature_names_new, class_names_new
+
+    def _interpret_input_y(self, y):
+        class_names_new = None
+        if isinstance(y, pd.core.series.Series):  # Pandas 
+            y_new, class_names = pd.factorize(y)
+            class_names_new = np.array(class_names)
+        elif isinstance(y, pd.core.frame.DataFrame):
+            if y.columns.size > 1:
+                raise ValueError("y has more than one column.")
+            y = y.iloc[:, 0]
+            y_new, class_names = pd.factorize(y)
+            class_names_new = np.array(class_names)
+        elif isinstance(y, np.ndarray):  # Numpy
+            y_new = pd.factorize(y)[0]
+        else:
+            raise ValueError("y must be Pandas series Pandas DataFrame or Numpy array.")
+        y_original = y
+
+        return y_new, y_original, class_names_new
+
 
     def _one_hot_encode(self, X):
         X_one_hot = pd.get_dummies(X, columns=list(X.select_dtypes(include=['object', 'category']).columns))
@@ -331,7 +333,7 @@ class MoDT():
             self._e_step(X_gate, first_iteration=(iteration == 0))
 
             self._log_values_to_array()  # After E step: Theta, DTs and gating values are in sync
-            self.all_accuracies.append(self.accuracy_score(iteration=iteration))
+            self.all_accuracies.append(self.score_internal(iteration=iteration))
 
             if iteration != self.iterations - 1:  # We can skip last M step because DT would not be re-trained again anyway
                 self._m_step(X_gate,
@@ -511,12 +513,22 @@ class MoDT():
         multiplication = self.gating_values * confidence_correct
         return(multiplication / np.expand_dims(np.sum(multiplication, axis=1), axis=1))
 
-    def accuracy_score(self, iteration):
+    def score(self, X , y):
+        if len(X) != len(y):
+            raise ValueError("X and y have different lengths.")
+
+        y, _, _ = self._interpret_input_y(y)
+
+        predicted_labels = self.predict(X)
+        accuracy = (np.count_nonzero(predicted_labels.astype(int) == np.array(y).astype(int)) / len(X))
+        return accuracy
+
+    def score_internal(self, iteration):
         predicted_labels = self.predict_internal(iteration)
         accuracy = (np.count_nonzero(predicted_labels.astype(int) == self.y) / self.n_input)
         return accuracy
 
-    def accuracy_score_disjoint(self):
+    def score_internal_disjoint(self):
         if self.X_contains_categorical:
             X = self.X_original_pd
         else:

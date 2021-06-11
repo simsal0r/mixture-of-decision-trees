@@ -259,10 +259,26 @@ class TestMoDT(unittest.TestCase):
         self.assertTrue(test_model._select_X_internal()[1].shape[1] == 3)
         self.assertTrue(test_model.duration_fit is not None)
 
-    def test_predit(self):
+    def test_predict(self):
         self.set_default_paramas()
         test_model = TestMoDT.fit_modt(**self.parameters)
         self.assertTrue(len(test_model.predict(X=self.data_input)) == len(self.data_input))
+
+    def test_score(self):
+        self.set_default_paramas()
+        test_model = TestMoDT.fit_modt(**self.parameters)
+        self.assertTrue(test_model.score(self.data_input, self.data_target) > 0)        
+
+    def test_score_internal(self):
+        self.set_default_paramas()
+        test_model = TestMoDT.fit_modt(**self.parameters)
+        self.assertTrue(test_model.score_internal(0) > 0)   
+
+    def test_score_internal_disjoint(self):
+        self.set_default_paramas()
+        test_model = TestMoDT.fit_modt(**self.parameters)
+        self.assertTrue(test_model.score_internal_disjoint() > 0)   
+
 
 if __name__ == '__main__':
     unittest.main()
