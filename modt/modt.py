@@ -255,7 +255,7 @@ class MoDT():
             if self.use_2_dim_gate_based_on is not None:
                 n_features = 3
             else:
-                n_features = self.n_features_of_X
+                n_features = self.n_features_of_X + 1  # + 1 for bias
             initialized_theta = np.random.rand(n_features, self.n_experts)
         elif initialize_with == "pass_method":
             initialized_theta = initialization_method._calculate_theta(self)

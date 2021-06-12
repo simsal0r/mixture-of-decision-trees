@@ -115,6 +115,12 @@ class TestMoDT(unittest.TestCase):
         self.assertTrue(test_model.duration_fit is not None)
         self.assertTrue(test_model.predict(data_input) is not None)     
 
+    def test_random_init(self):
+        self.set_default_paramas() 
+        self.parameters["use_2_dim_gate_based_on"] = None
+        test_model = TestMoDT.fit_modt(**self.parameters)
+        self.assertTrue(test_model.duration_fit is not None)
+
     def test_kmeans_init(self):
         self.set_default_paramas()
         self.parameters["initialize_with"] = "pass_method"

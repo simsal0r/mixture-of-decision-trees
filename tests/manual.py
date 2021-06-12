@@ -7,25 +7,25 @@ from modt._initialization import *
 from modt.visualization import *
 
 
-# data_input = pickle.load(open("datasets/generated6_input.np", "rb"))
-# data_target = pickle.load(open("datasets/generated6_target.np", "rb"))
+data_input = pickle.load(open("datasets/generated6_input.np", "rb"))
+data_target = pickle.load(open("datasets/generated6_target.np", "rb"))
 
-data_input = pickle.load(open("datasets/adult_input.pd", "rb"))
-data_target = pickle.load(open("datasets/adult_target.pd", "rb"))
+# data_input = pickle.load(open("datasets/adult_input.pd", "rb"))
+# data_target = pickle.load(open("datasets/adult_target.pd", "rb"))
 
 parameters = {
     "X": data_input,
     "y": data_target,
-    "n_experts": 10,
+    "n_experts": 3,
     "iterations": 10,
     "max_depth": 2,
     "init_learning_rate": 10,
     "learning_rate_decay": 1,
-    "initialize_with": "pass_method",
-    "initialization_method": Kmeans_init(),
+    "initialize_with": "random",
+    "initialization_method": None,
     "feature_names": None,
     "class_names": None,
-    "use_2_dim_gate_based_on": "feature_importance",
+    "use_2_dim_gate_based_on": None,
     "use_2_dim_clustering": False,
     "black_box_algorithm": None,
     }
