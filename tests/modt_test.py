@@ -35,7 +35,7 @@ class TestMoDT(unittest.TestCase):
                            "black_box_algorithm": None,
 
                            "optimization_method": "least_squares_linear_regression",
-                           "add_noise": False,
+                           "early_stopping": False,
                            "use_posterior": False,}
 
     @staticmethod
@@ -55,7 +55,7 @@ class TestMoDT(unittest.TestCase):
                 black_box_algorithm,
 
                 optimization_method,
-                add_noise,
+                early_stopping,
                 use_posterior):
 
         modt = MoDT(X=X,
@@ -74,7 +74,7 @@ class TestMoDT(unittest.TestCase):
                     use_2_dim_clustering=use_2_dim_clustering)
 
         modt.fit(optimization_method=optimization_method,
-                add_noise=add_noise,
+                early_stopping=early_stopping,
                 use_posterior=use_posterior)
 
         return modt
@@ -297,7 +297,6 @@ class TestMoDT(unittest.TestCase):
         self.set_default_paramas()
         test_model = TestMoDT.fit_modt(**self.parameters)
         self.assertTrue(test_model.score_internal_disjoint() > 0)   
-
 
 if __name__ == '__main__':
     unittest.main()

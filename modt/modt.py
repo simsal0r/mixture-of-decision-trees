@@ -45,6 +45,8 @@ class MoDT():
         self.n_experts = n_experts
         self.max_depth = max_depth
         self.iterations = iterations
+        self.completed_iterations = None
+        #self.counter_stale_iterations = 0
         self.init_learning_rate = init_learning_rate
         self.learning_rate_decay = learning_rate_decay
         self.learn_rate = [self.init_learning_rate * (self.learning_rate_decay ** max(float(i), 0.0)) for i in range(iterations)]
@@ -58,7 +60,7 @@ class MoDT():
         self.best_iteration = None
         self.posterior_probabilities = None
         self.confidence_experts = None
-        self.no_improvements = 0  # Counter for adding noise
+        self.counter_stale_iterations = 0  
         self.use_2_dim_gate_based_on = use_2_dim_gate_based_on
         self.use_2_dim_clustering = use_2_dim_clustering
 
@@ -270,7 +272,7 @@ class MoDT():
             if self.use_2_dim_gate_based_on is not None:
                 n_features = 3
             else:
-                n_features = self.n_features_of_X + 1  # + 1 for bias
+                n_features = self.X.shape[1]
             initialized_theta = np.random.rand(n_features, self.n_experts)
         elif initialize_with == "pass_method":
             initialized_theta = initialization_method._calculate_theta(self)
@@ -340,24 +342,30 @@ class MoDT():
         gating = self._gating_softmax(X_gate, self.all_theta_gating[iteration])
         return np.argmax(gating, axis=1)
 
-    def fit(self, optimization_method="default", add_noise=False, use_posterior=False, **optimization_kwargs):
+    def fit(self, optimization_method="default", early_stopping=True, use_posterior=False, **optimization_kwargs):
         start = timer()
 
         _, X_gate = self._select_X_internal()
+        self.completed_iterations = self.iterations
 
         for iteration in range(0, self.iterations):
-            self._e_step(X_gate, first_iteration=(iteration == 0))
+            self._e_step(X_gate)
 
             self._log_values_to_array()  # After E step: Theta, DTs and gating values are in sync
             self.all_accuracies.append(self.score_internal(iteration=iteration))
 
+            if early_stopping:
+                if self._no_accuracy_change(iteration):
+                    if self.verbose:
+                        print("Stopped at iteration: {}".format(iteration))
+                    self.completed_iterations = iteration
+                    break
+                
             if iteration != self.iterations - 1:  # We can skip last M step because DT would not be re-trained again anyway
                 self._m_step(X_gate,
                             iteration,
-                            first_iteration=(iteration == 0),
                             optimization_method=optimization_method,
                             use_posterior=use_posterior,
-                            add_noise=add_noise,
                             **optimization_kwargs)
 
         self.best_iteration = np.argmax(self.all_accuracies)
@@ -368,22 +376,16 @@ class MoDT():
         if self.verbose:
             print("Duration EM fit:", self.duration_fit)
 
-    def _e_step(self, X_gate, first_iteration):
+    def _e_step(self, X_gate):
         self.gating_values = self._gating_softmax(X=X_gate, theta_gating=self.theta_gating)
         self.gating_values = np.nan_to_num(self.gating_values)
         self._train_trees()
 
         self.posterior_probabilities = self._posterior_probabilties(self.DT_experts)
 
-        # if first_iteration:
-        #     self._log_values_to_array()
-
-    def _m_step(self, X_gate, iteration, first_iteration, optimization_method, use_posterior, add_noise, **optimization_kwargs):
+    def _m_step(self, X_gate, iteration, optimization_method, use_posterior, **optimization_kwargs):
         theta_new = self._update_theta(X_gate, optimization_method, use_posterior, **optimization_kwargs)
         self.theta_gating += self.learn_rate[iteration] * theta_new
-
-        if add_noise:
-            self.theta_gating += self._theta_noise(first_iteration, iteration)
 
     def _update_theta(self, X_gate, optimization_method, use_posterior, **optimization_kwargs):
         if use_posterior is True:
@@ -485,26 +487,20 @@ class MoDT():
         else:
             return e
 
-    def _theta_noise(self, first_iteration, iteration):
-        noise_threshold = 5
-        if self.no_improvements >= noise_threshold:
-            max_noise = np.mean(np.abs(self.theta_gating)) / 10
-
-            noise = np.random.random_integers(-max_noise, max_noise, self.theta_gating.size).reshape(self.theta_gating.shape)
-            self.no_improvements = noise_threshold - 5
-            print("Noise inserted at iteration:", iteration)
-            return noise
-        else:
-            if first_iteration:
-                pass
+    def _no_accuracy_change(self, iteration):
+        max_stale_iterations = 20
+        min_iterations = 5
+        if self.counter_stale_iterations >= max_stale_iterations:
+            return True
+        if iteration >= min_iterations:
+            difference = self.all_accuracies[iteration] - self.all_accuracies[iteration-1]
+            difference_cycle = self.all_accuracies[iteration] - self.all_accuracies[iteration-2]
+            # print(difference,np.abs(difference) < 0.0001)
+            if np.abs(difference) < 0.0001 or np.abs(difference_cycle) < 0.0001:
+                self.counter_stale_iterations += 1
             else:
-                difference = self._accuracy_score(iteration) - self._accuracy_score(iteration - 1)
-                # print(difference,np.abs(difference) < 0.0001)
-                if difference < 0 or np.abs(difference) < 0.0001:
-                    self.no_improvements += 1
-                else:
-                    self.no_improvements = 0
-        return 0
+                self.counter_stale_iterations = 0
+        return False
 
     # Returns gating probabilities for experts column-wise for all datapoints x
     def _gating_softmax(self, X, theta_gating):
