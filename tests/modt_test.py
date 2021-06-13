@@ -6,6 +6,9 @@ sys.path.insert(1, os.path.join(sys.path[0], ".."))
 from modt.modt import MoDT
 from modt._initialization import *
 
+import numpy as np
+
+
 class TestMoDT(unittest.TestCase):
 
     def __init__(self, *args, **kwargs):
@@ -75,6 +78,16 @@ class TestMoDT(unittest.TestCase):
                 use_posterior=use_posterior)
 
         return modt
+
+    def test_y_mapping(self):
+        self.set_default_paramas()
+        data_input = np.array([[0,1,2,3,4,5,6],[0,1,2,3,4,5,6]]).T
+        data_target = np.array(["a","b","c","d","e","f","g"])
+        self.parameters["X"] = data_input
+        self.parameters["y"] = data_target
+        test_model = TestMoDT.fit_modt(**self.parameters)
+        self.assertTrue(test_model.duration_fit is not None)
+        self.assertTrue(np.all(test_model._map_y(test_model.y) == data_target))
 
     def test_parameters(self):
         self.set_default_paramas()

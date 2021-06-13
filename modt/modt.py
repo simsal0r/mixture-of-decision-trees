@@ -36,8 +36,12 @@ class MoDT():
         self.verbose_detailed = False
         self.X_contains_categorical = False
 
+        if np.array(X).ndim == 1:
+            raise ValueError("X must have at least 2 dimensions.")
+
         self.n_features_of_X = X.shape[1]
         self.n_input = X.shape[0]
+        self.y_map = None
         self.n_experts = n_experts
         self.max_depth = max_depth
         self.iterations = iterations
@@ -69,7 +73,6 @@ class MoDT():
         self.all_clustering_accuracies = []
         self.all_cluster_labels = []
         self.all_cluster_centers = []
-
 
         self._check_argument_validity()
 
@@ -107,7 +110,7 @@ class MoDT():
 
     def _check_argument_validity(self):
         if self.use_2_dim_gate_based_on is None and self.use_2_dim_clustering:
-            raise ValueError("Argument incompatibility")
+            raise ValueError("Argument incompatibility.")
         if self.n_experts <= 0:
             raise ValueError("More than 0 experts required.")
 
@@ -162,10 +165,20 @@ class MoDT():
             y_new = pd.factorize(y)[0]
         else:
             raise ValueError("y must be Pandas series Pandas DataFrame or Numpy array.")
-        y_original = y
 
-        return y_new, y_original, class_names_new
+        indexes_unique = np.unique(y, return_index=True)[1]
+        keys = [y[idx] for idx in indexes_unique] 
+        values = [y_new[idx] for idx in indexes_unique] 
+        self.y_map = dict(zip(values, keys))
 
+        return y_new, y, class_names_new
+
+    def _map_y(self, y_prediction, reverse=False):
+        if reverse:  # Unseen value is outputted as is # TODO: Remove?
+            y_map = {v: k for k, v in self.y_map.items()}
+            return np.array([(y_map[y] if y in y_map else y) for y in y_prediction])
+        else:
+            return np.array([self.y_map[y] for y in y_prediction])
 
     def _one_hot_encode(self, X):
         X_one_hot = pd.get_dummies(X, columns=list(X.select_dtypes(include=['object', 'category']).columns))
@@ -182,24 +195,26 @@ class MoDT():
                 features_10.append(column)
             else:
                 pass
-        # TODO: If less than 2 true
 
-        top_features_idx_all = np.argsort(-clf.feature_importances_)
-        mask = np.repeat(False, self.X.shape[1])
-        features_10_idx = []
+        if len(features_10) > 2:
+            top_features_idx_all = np.argsort(-clf.feature_importances_)
+            mask = np.repeat(False, self.X.shape[1])
+            features_10_idx = []
 
-        for feature in features_10:
-            features_10_idx.append(np.where(top_features_idx_all == feature)[0][0])
+            for feature in features_10:
+                features_10_idx.append(np.where(top_features_idx_all == feature)[0][0])
 
-        mask[features_10_idx] = True
+            mask[features_10_idx] = True
 
-        top_features_idx = top_features_idx_all[mask][:2]  # Select 2 best features
+            top_features_idx = top_features_idx_all[mask][:2]  # Select 2 best features
 
-        if self.verbose:
-            print("Top 2 Feature Importance:", clf.feature_importances_[top_features_idx])
-            print("Top 2 Feature Importance w/ features with few unique values:", clf.feature_importances_[np.argsort(-clf.feature_importances_)[:2]])
+            if self.verbose:
+                print("Top 2 Feature Importance:", clf.feature_importances_[top_features_idx])
+                print("Top 2 Feature Importance w/ features with few unique values:", clf.feature_importances_[np.argsort(-clf.feature_importances_)[:2]])
 
-        self.top_features_idx = top_features_idx
+            self.top_features_idx = top_features_idx
+        else:
+            self.top_features_idx = np.argsort(-clf.feature_importances_)[:2]
 
         # X with only 2 dimensions (+1 bias) for interpretable gates
         mask = list(self.top_features_idx)
@@ -283,7 +298,8 @@ class MoDT():
         selected_gates = np.argmax(gating, axis=1)
 
         predictions = [DTs[tree_index].predict(X) for tree_index in range(0, len(DTs))]
-        return np.array([predictions[gate][index] for index, gate in enumerate(selected_gates)]).astype("int")
+        predictions_gate_selected = np.array([predictions[gate][index] for index, gate in enumerate(selected_gates)]).astype("int")
+        return self._map_y(predictions_gate_selected)
 
     def predict_internal(self,iteration):
         if self.use_2_dim_gate_based_on is not None:  # feature importance or PCA
@@ -517,15 +533,13 @@ class MoDT():
         if len(X) != len(y):
             raise ValueError("X and y have different lengths.")
 
-        y, _, _ = self._interpret_input_y(y)
-
         predicted_labels = self.predict(X)
-        accuracy = (np.count_nonzero(predicted_labels.astype(int) == np.array(y).astype(int)) / len(X))
+        accuracy = (np.count_nonzero(predicted_labels == np.array(y)) / len(X))
         return accuracy
 
     def score_internal(self, iteration):
         predicted_labels = self.predict_internal(iteration)
-        accuracy = (np.count_nonzero(predicted_labels.astype(int) == self.y) / self.n_input)
+        accuracy = (np.count_nonzero(predicted_labels.astype(int) == self.y.astype(int)) / self.n_input)
         return accuracy
 
     def score_internal_disjoint(self):
@@ -534,7 +548,7 @@ class MoDT():
         else:
             X = self.X_original
         predicted_labels = self.predict(X)
-        accuracy = (np.count_nonzero(predicted_labels.astype(int) == self.y) / self.n_input)
+        accuracy = (np.count_nonzero(predicted_labels == self.y_original) / self.n_input)
         return accuracy
 
     def estimate_n_experts(self, range1=range(1, 7)):
