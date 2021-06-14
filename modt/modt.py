@@ -30,9 +30,10 @@ class MoDT():
                  use_2_dim_clustering=False,
                  black_box_algorithm=None,
                  feature_names=None,
-                 class_names=None):
+                 class_names=None,
+                 verbose=False):
 
-        self.verbose = True
+        self.verbose = verbose
         self.verbose_detailed = False
         self.X_contains_categorical = False
 
