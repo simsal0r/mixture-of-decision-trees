@@ -114,7 +114,7 @@ def accuracy_line(modt):
 
 def theta_development(modt):
     theta = np.array(modt.all_theta_gating)
-    for theta_variable in (theta.reshape(modt.completed_iterations +1 , -1).T):
+    for theta_variable in (theta.reshape(theta.shape[0] , -1).T):
         plt.plot(theta_variable.flatten())
 
 def plot_dt(modt, expert, size=(15,10), iteration="best",feature_names=None,class_names=None):

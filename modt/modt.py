@@ -347,7 +347,7 @@ class MoDT():
         start = timer()
 
         _, X_gate = self._select_X_internal()
-        self.completed_iterations = self.iterations
+        self.completed_iterations = self.iterations - 1
 
         for iteration in range(0, self.iterations):
             self._e_step(X_gate)
