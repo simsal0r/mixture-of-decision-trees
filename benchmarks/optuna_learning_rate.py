@@ -26,10 +26,10 @@ data_target = pickle.load(open(data_target_name, "rb"))
 study = optuna.create_study(study_name=study_name,directions=["maximize"], storage=storage_name)
 study.set_system_attr("Data X", data_input_name)
 study.set_system_attr("Data y", data_target_name)
-n_trials = 150
+n_trials = 10
 
-X, y = shuffle(data_input, data_target)
-X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=None)
+X, y = shuffle(data_input, data_target, random_state=7)
+X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=7)
 
 parameters = {
     "X": None,
@@ -38,7 +38,7 @@ parameters = {
     "iterations": 100,
     "max_depth": 2,
     "init_learning_rate": None,
-    "learning_rate_decay": 1,
+    "learning_rate_decay": None,
     "initialize_with": "random",
     "initialization_method": None,
     "feature_names": None,
@@ -63,25 +63,33 @@ def modt_wrapper(X, y , init_learning_rate, learning_rate_decay):
     modt.fit(**parameters_fit)
     return modt
 
-def cross_validation(X, y, **kwargs):
-    rkf = RepeatedKFold(n_splits=5, n_repeats=2)
+def cross_validation(**kwargs):  
     train_accuracies = []
     val_accuracies = []
+    test_accuracies = []
     train_score_i_0 = []  # First iteration
     train_score_i_9 = []  # Tenth iteration
     completed_iterations = []
+
+    rkf = RepeatedKFold(n_splits=5, n_repeats=2)
     for train_idx, val_idx in rkf.split(X_train):
-        modt = modt_wrapper(X[train_idx], y[train_idx], **kwargs)
+        modt = modt_wrapper(X_train[train_idx], y_train[train_idx], **kwargs)
         train_accuracies.append(modt.score_internal_disjoint())
-        val_accuracies.append(modt.score(X[val_idx], y[val_idx]))
+        val_accuracies.append(modt.score(X_train[val_idx], y_train[val_idx]))
+        test_accuracies.append(modt.score(X_test, y_test))
         train_score_i_0.append(modt.all_accuracies[0])
         train_score_i_9.append(modt.all_accuracies[9])
         completed_iterations.append(modt.completed_iterations)
     
-    return np.mean(train_accuracies), np.mean(val_accuracies), np.mean(train_score_i_0), np.mean(train_score_i_9), np.mean(completed_iterations)
+    return (np.mean(train_accuracies),
+            np.mean(val_accuracies),
+            np.mean(test_accuracies),
+            np.mean(train_score_i_0),
+            np.mean(train_score_i_9),
+            np.mean(completed_iterations))
 
 distributions = {
-    "init_learning_rate": optuna.distributions.UniformDistribution(10,300),
+    "init_learning_rate": optuna.distributions.UniformDistribution(1,300),
     "learning_rate_decay": optuna.distributions.UniformDistribution(0.90,1),
 }
 
@@ -98,27 +106,25 @@ for idx_trial in range(n_trials):
 
     (train_score, 
      validation_score,
+     test_score,
      train_score_i_0,
      train_score_i_9,
-     completed_iterations) = cross_validation(X=data_input,
-                                              y=data_target,
+     completed_iterations) = cross_validation(
                                               init_learning_rate=init_learning_rate,
                                               learning_rate_decay=learning_rate_decay)
 
     trial.set_user_attr("train_score", train_score)
+    trial.set_user_attr("test_score", test_score)
     trial.set_user_attr("train_score_i_0", train_score_i_0)
     trial.set_user_attr("train_score_i_9", train_score_i_9)
     trial.set_user_attr("completed_iterations", completed_iterations)
+
     study.tell(trial, validation_score) 
 
     print("Completed trial:", idx_trial)
     gc.collect() 
 
-accuracies = []
-for _ in range(3):
-    modt = modt_wrapper(X_train, y_train, **study.best_params)
-    accuracies.append(modt.score(X_test, y_test))
+print("Best parameters of study:", study.best_params) 
 
-study.set_user_attr("test_score", np.mean(accuracies))
 
 
