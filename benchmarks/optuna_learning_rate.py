@@ -26,7 +26,7 @@ data_target = pickle.load(open(data_target_name, "rb"))
 study = optuna.create_study(study_name=study_name,directions=["maximize"], storage=storage_name)
 study.set_system_attr("Data X", data_input_name)
 study.set_system_attr("Data y", data_target_name)
-n_trials = 10
+n_trials = 400
 
 X, y = shuffle(data_input, data_target, random_state=7)
 X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=7)
