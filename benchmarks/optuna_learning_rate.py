@@ -2,7 +2,7 @@ import sys, os
 sys.path.insert(1, os.path.join(sys.path[0], ".."))
 from modt.modt import MoDT
 from modt._initialization import *
-from modt.visualization import *
+#from modt.visualization import *
 from modt.utility import *
 
 from datetime import datetime
@@ -15,11 +15,11 @@ from sklearn.utils import shuffle
 from sklearn.model_selection import train_test_split
 from sklearn.model_selection import RepeatedKFold
 
-storage_name = "sqlite:///benchmarks/optuna_results.sqlite3"
+storage_name = "sqlite:///optuna_results_azure.sqlite3"
 study_name = "{} learning_rate".format(datetime.now().strftime("%Y.%m.%d %H:%M:%S"))
 
-data_input_name = "datasets/generated6_input.np"
-data_target_name = "datasets/generated6_target.np"
+data_input_name = "../datasets/generated6_input.np"
+data_target_name = "../datasets/generated6_target.np"
 data_input = pickle.load(open(data_input_name, "rb"))
 data_target = pickle.load(open(data_target_name, "rb"))
 
