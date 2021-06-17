@@ -18,8 +18,8 @@ from sklearn.model_selection import RepeatedKFold
 storage_name = "sqlite:///benchmarks/optuna_results.sqlite3"
 study_name = "{} learning_rate".format(datetime.now().strftime("%Y.%m.%d %H:%M:%S"))
 
-data_input_name = "datasets/generated6_input.np"
-data_target_name = "datasets/generated6_target.np"
+data_input_name = "datasets/steel_input.pd"
+data_target_name = "datasets/steel_target.pd"
 data_input = pickle.load(open(data_input_name, "rb"))
 data_target = pickle.load(open(data_target_name, "rb"))
 
@@ -30,6 +30,14 @@ n_trials = 10
 
 X, y = shuffle(data_input, data_target, random_state=7)
 X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=7)
+
+use_dataframe = False
+if isinstance(X_train, pd.core.frame.DataFrame):
+    use_dataframe = True
+    X_train = X_train.reset_index(drop=True)
+    X_test = X_test.reset_index(drop=True)
+    y_train = y_train.reset_index(drop=True)
+    y_test = y_test.reset_index(drop=True)
 
 parameters = {
     "X": None,
@@ -73,9 +81,26 @@ def cross_validation(**kwargs):
 
     rkf = RepeatedKFold(n_splits=5, n_repeats=2)
     for train_idx, val_idx in rkf.split(X_train):
-        modt = modt_wrapper(X_train[train_idx], y_train[train_idx], **kwargs)
+        if use_dataframe:
+            X_temp = X_train.iloc[train_idx]
+            y_temp = y_train.iloc[train_idx]
+            X_temp.reset_index(inplace=True, drop=True)
+            y_temp.reset_index(inplace=True, drop=True)
+            modt = modt_wrapper(X_temp, y_temp, **kwargs)
+        else:
+            modt = modt_wrapper(X_train[train_idx], y_train[train_idx], **kwargs)
+
         train_accuracies.append(modt.score_internal_disjoint())
-        val_accuracies.append(modt.score(X_train[val_idx], y_train[val_idx]))
+
+        if use_dataframe:
+            X_temp = X_train.iloc[val_idx]       
+            y_temp = y_train.iloc[val_idx]
+            X_temp.reset_index(inplace=True, drop=True)
+            y_temp.reset_index(inplace=True, drop=True)
+            val_accuracies.append(modt.score(X_temp, y_temp))
+        else:
+            val_accuracies.append(modt.score(X_train[val_idx], y_train[val_idx]))
+            
         test_accuracies.append(modt.score(X_test, y_test))
         train_score_i_0.append(modt.all_accuracies[0])
         train_score_i_9.append(modt.all_accuracies[9])
@@ -109,8 +134,7 @@ for idx_trial in range(n_trials):
      test_score,
      train_score_i_0,
      train_score_i_9,
-     completed_iterations) = cross_validation(
-                                              init_learning_rate=init_learning_rate,
+     completed_iterations) = cross_validation(init_learning_rate=init_learning_rate,
                                               learning_rate_decay=learning_rate_decay)
 
     trial.set_user_attr("train_score", train_score)
