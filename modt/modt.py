@@ -531,7 +531,7 @@ class MoDT():
             raise ValueError("X and y have different lengths.")
 
         predicted_labels = self.predict(X)
-        accuracy = (np.count_nonzero(predicted_labels == np.array(y)) / len(X))
+        accuracy = (np.count_nonzero(np.array(predicted_labels).flatten() == np.array(y).flatten()) / len(X))
         return accuracy
 
     def score_internal(self, iteration):
