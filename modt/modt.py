@@ -347,7 +347,7 @@ class MoDT():
         start = timer()
 
         _, X_gate = self._select_X_internal()
-        self.completed_iterations = self.iterations
+        self.completed_iterations = self.iterations - 1
 
         for iteration in range(0, self.iterations):
             self._e_step(X_gate)
@@ -531,7 +531,7 @@ class MoDT():
             raise ValueError("X and y have different lengths.")
 
         predicted_labels = self.predict(X)
-        accuracy = (np.count_nonzero(predicted_labels == np.array(y)) / len(X))
+        accuracy = (np.count_nonzero(np.array(predicted_labels).flatten() == np.array(y).flatten()) / len(X))
         return accuracy
 
     def score_internal(self, iteration):
