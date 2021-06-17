@@ -10,8 +10,10 @@ from modt.visualization import *
 #data_input = pickle.load(open("datasets/generated6_input.np", "rb"))
 #data_target = pickle.load(open("datasets/generated6_target.np", "rb"))
 
-data_input = np.array([[0,1,2,3,4,5,6],[0,1,2,3,4,5,6]]).T
-data_target = np.array(["a","b","c","d","e","f","g"])
+#data_input = np.array([[0,1,2,3,4,5,6],[0,1,2,3,4,5,6]]).T
+#data_target = np.array(["a","b","c","d","e","f","g"])
+data_input = pickle.load(open("datasets/bank_input.pd", "rb"))
+data_target = pickle.load(open("datasets/bank_target.pd", "rb"))
 
 # data_input = pickle.load(open("datasets/adult_input.pd", "rb"))
 # data_target = pickle.load(open("datasets/adult_target.pd", "rb"))
@@ -20,7 +22,7 @@ parameters = {
     "X": data_input,
     "y": data_target,
     "n_experts": 3,
-    "iterations": 10,
+    "iterations": 2,
     "max_depth": 2,
     "init_learning_rate": 10,
     "learning_rate_decay": 1,
@@ -31,6 +33,7 @@ parameters = {
     "use_2_dim_gate_based_on": "feature_importance",
     "use_2_dim_clustering": False,
     "black_box_algorithm": None,
+    "verbose": True
     }
 
 parameters_fit = {
@@ -39,6 +42,9 @@ parameters_fit = {
     "use_posterior": False,
     }
 
+
+parameters["initialize_with"] = "pass_method"
+parameters["initialization_method"] = BGM_init()
 
 modt = MoDT(**parameters)
 

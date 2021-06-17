@@ -39,7 +39,7 @@ def _theta_calculation_lda(self_modt,X,y):
     if self_modt.verbose:
         print("Initialization LDA score:", clf.score(X, y))
     if self_modt.n_experts == 2: # special case 2 experts; here both regions are separeted by the same discriminant
-        theta = np.zeros((X.shape[1],self_modt.n_experts))
+        theta = np.zeros((X.shape[1], self_modt.n_experts))
         theta[:,0] = clf.coef_
         theta[:,1] = clf.coef_ * -1
     else:
@@ -236,7 +236,7 @@ class BGM_init():
                                       )
         bgm.fit(X)
         probabilities = bgm.predict_proba(X)
-        probabilities[:,bgm.weights_ < self.weight_cutoff] = 0
+        probabilities[:, bgm.weights_ < self.weight_cutoff] = -1
         labels = np.argmax(probabilities, axis=1)  # Label number range can have gaps
         
         # Rename labels starting with 0
@@ -249,7 +249,7 @@ class BGM_init():
         n_experts = np.sum(bgm.weights_ >= self.weight_cutoff)
         if self_modt.verbose:
             print("BGM estimates {} experts of max {} in iteration {}".format(n_experts, self_modt.n_experts, bgm.n_iter_))
-            if (np.sum(np.sum(probabilities,axis=1) == 0) != 0):
+            if (np.sum(np.sum(probabilities, axis=1) == 0) != 0):
                 print("Warning: Some datapoints have zero weight in the BGM model.")
         if n_experts < 2:
             n_experts = 2
