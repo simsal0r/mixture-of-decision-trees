@@ -22,8 +22,8 @@ class MoDT():
                  n_experts,
                  iterations,
                  max_depth,
-                 init_learning_rate=2,
-                 learning_rate_decay=0.95,
+                 init_learning_rate=100,
+                 learning_rate_decay=0.995,
                  initialize_with="random",
                  initialization_method=None,
                  use_2_dim_gate_based_on=None,
@@ -114,6 +114,8 @@ class MoDT():
     def _check_argument_validity(self):
         if self.use_2_dim_gate_based_on is None and self.use_2_dim_clustering:
             raise ValueError("Argument incompatibility.")
+        if self.use_2_dim_clustering != False and self.use_2_dim_clustering != True: 
+            raise ValueError("use_2_dim_clustering must be True or False")            
         if self.n_experts <= 0:
             raise ValueError("More than 0 experts required.")
 

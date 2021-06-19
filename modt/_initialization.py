@@ -126,7 +126,8 @@ class KDTmeans_init():
             ## ----- ##
             
             if np.allclose(cluster_centers,new_centers):
-                print("Convergence at iteration",iteration)
+                if self_modt.verbose:
+                    print("Convergence at iteration",iteration)
                 break
             else:
                 cluster_centers = new_centers
