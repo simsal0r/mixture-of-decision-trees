@@ -89,6 +89,28 @@ class TestMoDT(unittest.TestCase):
         self.set_default_paramas()
         self.parameters["use_2_dim_gate_based_on"] = "feature_importance_lda"
         self.assertTrue(TestMoDT.fit_modt(**self.parameters).duration_fit is not None)
-        
+
+    def test_prediction_input_has_other_features(self):
+        self.set_default_paramas()
+        X = pickle.load(open("datasets/adult_input.pd", "rb"))
+        y = pickle.load(open("datasets/adult_target.pd", "rb"))
+        X_temp = X.iloc[0:50]
+        y_temp = y.iloc[0:50]
+        X_temp.reset_index(inplace=True, drop=True)
+        y_temp.reset_index(inplace=True, drop=True)
+        self.parameters["X"] = X_temp
+        self.parameters["y"] = y_temp
+
+        test_model = TestMoDT.fit_modt(**self.parameters)
+
+        X_temp = X.iloc[50:100]
+        y_temp = y.iloc[50:100]
+        X_temp.reset_index(inplace=True, drop=True)
+        y_temp.reset_index(inplace=True, drop=True)
+
+        predictions = test_model.predict(X_temp)
+
+        self.assertTrue(len(predictions) == 50)
+
 if __name__ == '__main__':
     unittest.main()

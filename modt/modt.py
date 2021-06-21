@@ -87,6 +87,7 @@ class MoDT():
          self.y,
          self.y_original,
          self.feature_names,
+         self.feature_names_one_hot,
          self.class_names
          ) = self._interpret_input(X, y, feature_names, class_names)
 
@@ -127,12 +128,13 @@ class MoDT():
         X_one_hot = None
         X_original_pd = None
         feature_names_new = None
+        feature_names_one_hot = None
 
         if isinstance(X, pd.core.frame.DataFrame):  # Pandas
             # Categorical treatment
             if np.intersect1d(['object', 'category'], X.dtypes.values.astype(str)).size > 0:
                 self.X_contains_categorical = True
-                X_new = self._one_hot_encode(X)
+                X_new, feature_names_one_hot = self._one_hot_encode(X)
             else:
                 X_new = np.array(X)
             X_original = np.array(X)
@@ -157,7 +159,7 @@ class MoDT():
             class_names_new = np.array(class_names)
             class_names_new = class_names_new.astype(str)
 
-        return X_new, X_original, X_original_pd, X_one_hot, y_new, y_original, feature_names_new, class_names_new
+        return X_new, X_original, X_original_pd, X_one_hot, y_new, y_original, feature_names_new, feature_names_one_hot, class_names_new
 
     def _interpret_input_y(self, y):
         class_names_new = None
@@ -191,8 +193,9 @@ class MoDT():
 
     def _one_hot_encode(self, X):
         X_one_hot = pd.get_dummies(X, columns=list(X.select_dtypes(include=['object', 'category']).columns))
+        X_one_hot_columns = X_one_hot.columns
         X_one_hot = np.array(X_one_hot)
-        return X_one_hot
+        return X_one_hot, X_one_hot_columns
 
     def _get_2_dim_feature_importance_mask(self, method="DT"):
         if method == "DT":
@@ -307,7 +310,16 @@ class MoDT():
         iteration = self.best_iteration
 
         if self.X_contains_categorical:
-            X = self._one_hot_encode(X)
+            X = pd.get_dummies(X, columns=list(X.select_dtypes(include=['object', 'category']).columns))
+            unseen_features_of_prediction_input = np.setdiff1d(X.columns, self.feature_names_one_hot)
+            missing_features_of_prediction_input = np.setdiff1d(self.feature_names_one_hot, X.columns)
+            if unseen_features_of_prediction_input.size > 0:
+                X = X.drop(columns=unseen_features_of_prediction_input, axis=1)
+            if missing_features_of_prediction_input.size > 0:
+                X[missing_features_of_prediction_input] = 0
+
+            X = np.array(X)      
+        
         X_gate = self._preprocess_X(X)
         if self.use_2_dim_gate_based_on is not None:  # feature importance or PCA
             X_gate = self._transform_X_into_2_dim_for_prediction(X_gate, method=self.use_2_dim_gate_based_on)
@@ -456,7 +468,7 @@ class MoDT():
         DT_experts_disjoint = [None for i in range(self.n_experts)]
         if tree_algorithm == "sklearn":
             if self.X_contains_categorical:
-                X = self._one_hot_encode(self.X_original_pd)
+                X, _ = self._one_hot_encode(self.X_original_pd)
             else:
                 X = self.X_original
             for index_expert in range(0, self.n_experts):

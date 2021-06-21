@@ -2,8 +2,8 @@ import pickle
 from modt.modt import MoDT
 from modt._initialization import *
 
-data_input = pickle.load(open("datasets/breast_cancer_input.np", "rb"))
-data_target = pickle.load(open("datasets/breast_cancer_target.np", "rb"))
+data_input = pickle.load(open("datasets/adult_input.pd", "rb"))
+data_target = pickle.load(open("datasets/adult_target.pd", "rb"))
 
 parameters = {
     "X": data_input,
@@ -32,3 +32,4 @@ parameters_fit = {
 modt = MoDT(**parameters)
 print(modt.learn_rate)
 modt.fit(**parameters_fit)
+modt.score_internal_disjoint()
