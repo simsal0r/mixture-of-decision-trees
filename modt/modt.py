@@ -12,6 +12,7 @@ from sklearn.decomposition import PCA
 from sklearn.linear_model import Ridge
 from sklearn.linear_model import Lasso
 from sklearn.mixture import GaussianMixture
+from sklearn.discriminant_analysis import LinearDiscriminantAnalysis
 
 
 class MoDT():
@@ -96,12 +97,15 @@ class MoDT():
         self.scaler = self._create_scaler(self.X)  # Standardization on input. Scaler also needed for prediction of new observations.
         self.X = self._preprocess_X(self.X)  # Apply standardization and add bias
 
-        self.X_top_2_mask = self._get_2_dim_feature_importance_mask()  # Always calculate Top 2 features for plotting; 2D + Bias
+        self.X_top_2_mask = self._get_2_dim_feature_importance_mask(method="DT")  # Always calculate Top 2 features for plotting; 2D + Bias
         self.X_2_dim = self.X[:, self.X_top_2_mask]  # For plotting; 2D + bias; components in case of PCA
 
         if self.use_2_dim_gate_based_on is not None:
             if self.use_2_dim_gate_based_on == "feature_importance":
-                pass
+                pass  # This default choice has been calculated already.
+            elif self.use_2_dim_gate_based_on == "feature_importance_lda":
+                self.X_top_2_mask = self._get_2_dim_feature_importance_mask(method="LDA")  
+                self.X_2_dim = self.X[:, self.X_top_2_mask]  
             elif self.use_2_dim_gate_based_on == "PCA":
                 self.X_2_dim = self._perform_PCA()
             else:
@@ -190,9 +194,19 @@ class MoDT():
         X_one_hot = np.array(X_one_hot)
         return X_one_hot
 
-    def _get_2_dim_feature_importance_mask(self):
-        clf = tree.DecisionTreeClassifier()
-        clf = clf.fit(self.X, self.y)
+    def _get_2_dim_feature_importance_mask(self, method="DT"):
+        if method == "DT":
+            clf = tree.DecisionTreeClassifier()
+            clf = clf.fit(self.X, self.y)
+            importances = -clf.feature_importances_
+        elif method == "LDA": 
+            clf = LinearDiscriminantAnalysis()
+            clf.fit(self.X, self.y)
+            weights = np.abs(clf.coef_) / np.sum(np.abs(clf.coef_))
+            importances = -weights[0]
+        else:
+            raise ValueError("Invalid method for feature importance.")
+
         # TODO: Rework
         features_10 = []  # Features that have more than 10 unique values
         for column in range(0, self.X.shape[1]):
@@ -202,7 +216,7 @@ class MoDT():
                 pass
 
         if len(features_10) > 2:
-            top_features_idx_all = np.argsort(-clf.feature_importances_)
+            top_features_idx_all = np.argsort(importances)
             mask = np.repeat(False, self.X.shape[1])
             features_10_idx = []
 
@@ -215,11 +229,11 @@ class MoDT():
 
             if self.verbose:
                 print("Top 2 Feature Importance:", clf.feature_importances_[top_features_idx])
-                print("Top 2 Feature Importance w/ features with few unique values:", clf.feature_importances_[np.argsort(-clf.feature_importances_)[:2]])
+                print("Top 2 Feature Importance w/ features with few unique values:", clf.feature_importances_[np.argsort(importances)[:2]])
 
             self.top_features_idx = top_features_idx
         else:
-            self.top_features_idx = np.argsort(-clf.feature_importances_)[:2]
+            self.top_features_idx = np.argsort(importances)[:2]
 
         # X with only 2 dimensions (+1 bias) for interpretable gates
         mask = list(self.top_features_idx)
@@ -240,7 +254,7 @@ class MoDT():
         return X, X_gate
 
     def _transform_X_into_2_dim_for_prediction(self, X, method):
-        if method == "feature_importance":
+        if method == "feature_importance" or method == "feature_importance_lda":
             X = X[:, self.X_top_2_mask]
         elif method == "PCA":
             X = self.pca.transform(X)

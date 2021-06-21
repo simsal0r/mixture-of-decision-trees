@@ -14,7 +14,7 @@ parameters = {
     "init_learning_rate": 10,
     "learning_rate_decay": 1,
     "initialize_with": "pass_method",
-    "initialization_method": DBSCAN_init(theta_fittig_method="lda",eps=0.9,min_samples=5),
+    "initialization_method": Kmeans_init(),
     "feature_names": None,
     "class_names": None,
     "use_2_dim_gate_based_on": "feature_importance",
@@ -30,5 +30,5 @@ parameters_fit = {
 
 
 modt = MoDT(**parameters)
-#print(modt.learn_rate)
+print(modt.learn_rate)
 modt.fit(**parameters_fit)
