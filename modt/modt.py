@@ -47,36 +47,13 @@ class MoDT():
         self.n_experts = n_experts
         self.max_depth = max_depth
         self.iterations = iterations
-        self.completed_iterations = None
-        #self.counter_stale_iterations = 0
+        self.initialize_with = initialize_with
+        self.initialization_method = initialization_method
         self.init_learning_rate = init_learning_rate
-        self.learning_rate_decay = learning_rate_decay
-        self.learn_rate = [self.init_learning_rate * (self.learning_rate_decay ** max(float(i), 0.0)) for i in range(iterations)]
-        self.gating_values = None
-        self.DT_experts = None
-        self.DT_experts_disjoint = None
-        self.all_DTs = []
-        self.all_theta_gating = []
-        self.all_gating_values = []
-        self.all_accuracies = []
-        self.best_iteration = None
-        self.posterior_probabilities = None
-        self.confidence_experts = None
-        self.counter_stale_iterations = 0  
         self.use_2_dim_gate_based_on = use_2_dim_gate_based_on
         self.use_2_dim_clustering = use_2_dim_clustering
-
-        # Plotting & Debugging
-        self.duration_fit = None
-        self.duration_initialization = None
-        self.init_labels = None
-        self.dbscan_mask = None
-        self.dbscan_selected_labels = None
-        # Debugging & Plotting kDTmeans
-        self.all_DT_clusters = []
-        self.all_clustering_accuracies = []
-        self.all_cluster_labels = []
-        self.all_cluster_centers = []
+        self.learning_rate_decay = learning_rate_decay
+        self.learn_rate = [self.init_learning_rate * (self.learning_rate_decay ** max(float(i), 0.0)) for i in range(iterations)]
 
         self._check_argument_validity()
 
@@ -112,8 +89,36 @@ class MoDT():
             else:
                 raise Exception("Invalid method for gate dimensionality reduction.")
 
+
+    def _initialize_fitting_variables(self):
+        self.completed_iterations = None
+        #self.counter_stale_iterations = 0
+        self.gating_values = None
+        self.DT_experts = None
+        self.DT_experts_disjoint = None
+        self.all_DTs = []
+        self.all_theta_gating = []
+        self.all_gating_values = []
+        self.all_accuracies = []
+        self.best_iteration = None
+        self.posterior_probabilities = None
+        self.confidence_experts = None
+        self.counter_stale_iterations = 0  
+
+        # Plotting & Debugging
+        self.duration_fit = None
+        self.duration_initialization = None
+        self.init_labels = None
+        self.dbscan_mask = None
+        self.dbscan_selected_labels = None
+        # Debugging & Plotting kDTmeans
+        self.all_DT_clusters = []
+        self.all_clustering_accuracies = []
+        self.all_cluster_labels = []
+        self.all_cluster_centers = []
+
         # Initialize gating values
-        self.theta_gating = self._initialize_theta(initialize_with, initialization_method)
+        self.theta_gating = self._initialize_theta(self.initialize_with, self.initialization_method)
         self.init_theta = self.theta_gating.copy()
 
     def _check_argument_validity(self):
@@ -372,6 +377,9 @@ class MoDT():
         return np.argmax(gating, axis=1)
 
     def fit(self, optimization_method="default", early_stopping=True, use_posterior=False, **optimization_kwargs):
+        
+        self._initialize_fitting_variables()
+
         start = timer()
 
         _, X_gate = self._select_X_internal()
@@ -432,7 +440,7 @@ class MoDT():
         elif optimization_method == "lasso_regression":
             model = Lasso(alpha=1, fit_intercept=False).fit(X_gate, optimization_target)
             theta_new = theta_new = model.coef_.T
-        elif optimization_method == "moet1":
+        elif optimization_method == "matmul":
             theta_new = X_gate.T @ optimization_target
         elif optimization_method == "moet2":
             theta_new = self._theta_recalculation_moet2(posterior_probabilities=self.posterior_probabilities, gating=self.gating_values, X=X_gate)
@@ -509,7 +517,7 @@ class MoDT():
                 pom2 = pom2.reshape(-1, 1)  # Flatten
                 R += pom1 * (pom2 @ pom2.T)
 
-        e = self._update_theta(X, optimization_method="moet1", use_posterior=False)
+        e = self._update_theta(X, optimization_method="matmul", use_posterior=False)
 
         if np.linalg.cond(R) < 1e7:
             return (np.linalg.inv(R) @ e.flatten()).reshape(-1, self.n_experts)

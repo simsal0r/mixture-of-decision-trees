@@ -102,7 +102,7 @@ for dataset in datasets:
     } 
     
     for method in dimensionality_reduction:
-        print("Starting",method,"...")
+        print("Starting", method,"...")
         parameters["use_2_dim_gate_based_on"] = method
 
         train_accuracies = []

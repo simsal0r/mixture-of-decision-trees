@@ -24,12 +24,12 @@ parameters = {
 
 parameters_fit = {
     "optimization_method": "least_squares_linear_regression",
-    "add_noise": False,
+    "early_stopping": False,
     "use_posterior": False,
     }
 
 
 modt = MoDT(**parameters)
-print(modt.learn_rate)
+print(modt.learn_rate, modt.gating_values)
 modt.fit(**parameters_fit)
 modt.score_internal_disjoint()

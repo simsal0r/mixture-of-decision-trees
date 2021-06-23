@@ -112,5 +112,37 @@ class TestMoDT(unittest.TestCase):
 
         self.assertTrue(len(predictions) == 50)
 
+    def test_fit_twice(self):
+        parameters_init = {
+                           "X": self.data_input,
+                           "y": self.data_target,
+                           "n_experts": 3,
+                           "iterations": 10,
+                           "max_depth": 2,
+                           "init_learning_rate": 10,
+                           "learning_rate_decay": 1,
+                           "initialize_with": "random",
+                           "initialization_method": None,
+                           "feature_names": None,
+                           "class_names": None,
+                           "use_2_dim_gate_based_on": None,
+                           "use_2_dim_clustering": False,
+                           "black_box_algorithm": None,
+        }
+
+        parameters_fit = {
+                          "optimization_method": "least_squares_linear_regression",
+                          "early_stopping": False,
+                          "use_posterior": False,
+        }
+
+        modt = MoDT(**parameters_init)
+        modt.fit(**parameters_fit)
+        self.assertTrue(len(modt.all_theta_gating) == 10)
+        modt.fit(**parameters_fit)
+        self.assertTrue(len(modt.all_theta_gating) == 10)
+
+
+
 if __name__ == '__main__':
     unittest.main()
