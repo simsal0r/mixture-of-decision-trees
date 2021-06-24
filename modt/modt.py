@@ -32,11 +32,13 @@ class MoDT():
                  black_box_algorithm=None,
                  feature_names=None,
                  class_names=None,
+                 save_likelihood=False,
                  verbose=False):
 
         self.verbose = verbose
         self.verbose_detailed = False
         self.X_contains_categorical = False
+        self.save_likelihood = save_likelihood
 
         if np.array(X).ndim == 1:
             raise ValueError("X must have at least 2 dimensions.")
@@ -91,8 +93,7 @@ class MoDT():
 
 
     def _initialize_fitting_variables(self):
-        self.completed_iterations = None
-        #self.counter_stale_iterations = 0
+
         self.gating_values = None
         self.DT_experts = None
         self.DT_experts_disjoint = None
@@ -100,7 +101,10 @@ class MoDT():
         self.all_theta_gating = []
         self.all_gating_values = []
         self.all_accuracies = []
+        self.all_likelihood = []
         self.best_iteration = None
+        self.completed_iterations = None
+        #self.counter_stale_iterations = 0
         self.posterior_probabilities = None
         self.confidence_experts = None
         self.counter_stale_iterations = 0  
@@ -116,6 +120,7 @@ class MoDT():
         self.all_clustering_accuracies = []
         self.all_cluster_labels = []
         self.all_cluster_centers = []
+        
 
         # Initialize gating values
         self.theta_gating = self._initialize_theta(self.initialize_with, self.initialization_method)
@@ -337,7 +342,7 @@ class MoDT():
         predictions_gate_selected = np.array([predictions[gate][index] for index, gate in enumerate(selected_gates)]).astype("int")
         return self._map_y(predictions_gate_selected)
 
-    def predict_internal(self,iteration):
+    def predict_internal(self, iteration, return_complete=False):
         if self.use_2_dim_gate_based_on is not None:  # feature importance or PCA
             X_gate = self._transform_X_into_2_dim_for_prediction(self.X, method=self.use_2_dim_gate_based_on)
         else:
@@ -348,7 +353,10 @@ class MoDT():
         selected_gates = np.argmax(gating, axis=1)
 
         predictions = [DTs[tree_index].predict(self.X) for tree_index in range(0, len(DTs))]
-        return np.array([predictions[gate][index] for index, gate in enumerate(selected_gates)]).astype("int")
+        if return_complete:
+            return np.array(predictions)
+        else:
+            return np.array([predictions[gate][index] for index, gate in enumerate(selected_gates)]).astype("int")
 
 
     # def predict_disjoint(self, X):
@@ -379,6 +387,8 @@ class MoDT():
     def fit(self, optimization_method="default", early_stopping=True, use_posterior=False, **optimization_kwargs):
         
         self._initialize_fitting_variables()
+        if early_stopping is True:
+            early_stopping = "likelihood"
 
         start = timer()
 
@@ -386,13 +396,15 @@ class MoDT():
         self.completed_iterations = self.iterations - 1
 
         for iteration in range(0, self.iterations):
+
             self._e_step(X_gate)
-
             self._log_values_to_array()  # After E step: Theta, DTs and gating values are in sync
+            
             self.all_accuracies.append(self.score_internal(iteration=iteration))
-
-            if early_stopping:
-                if self._no_accuracy_change(iteration):
+            if self.save_likelihood or early_stopping == "likelihood":
+                self.all_likelihood.append(self._likelihood())
+            if early_stopping == "likelihood" or early_stopping == "accuracy":
+                if self._check_for_convergence(iteration, based_on=early_stopping):
                     if self.verbose:
                         print("Stopped at iteration: {}".format(iteration))
                     self.completed_iterations = iteration
@@ -418,7 +430,7 @@ class MoDT():
         self.gating_values = np.nan_to_num(self.gating_values)
         self._train_trees()
 
-        self.posterior_probabilities = self._posterior_probabilties(self.DT_experts)
+        self.posterior_probabilities = self._posterior_probabilties()
 
     def _m_step(self, X_gate, iteration, optimization_method, use_posterior, **optimization_kwargs):
         theta_new = self._update_theta(X_gate, optimization_method, use_posterior, **optimization_kwargs)
@@ -524,19 +536,30 @@ class MoDT():
         else:
             return e
 
-    def _no_accuracy_change(self, iteration):
+    def _check_for_convergence(self, iteration, based_on="likelihood"):
         max_stale_iterations = 20
         min_iterations = 5
         if self.counter_stale_iterations >= max_stale_iterations:
             return True
         if iteration >= min_iterations:
-            difference = self.all_accuracies[iteration] - self.all_accuracies[iteration-1]
-            difference_cycle = self.all_accuracies[iteration] - self.all_accuracies[iteration-2]
-            # print(difference,np.abs(difference) < 0.0001)
-            if np.abs(difference) < 0.0001 or np.abs(difference_cycle) < 0.0001:
-                self.counter_stale_iterations += 1
+            if based_on == "likelihood":
+                difference = self.all_likelihood[iteration] - self.all_likelihood[iteration-1]
+                difference_cycle = self.all_likelihood[iteration] - self.all_likelihood[iteration-2]
+                if np.abs(difference) < self.all_likelihood[iteration-2] * -0.005 or np.abs(difference_cycle) < self.all_likelihood[iteration-2] * -0.005:
+                    self.counter_stale_iterations += 1
+                else:
+                    self.counter_stale_iterations = 0
+            elif based_on == "accuracy":                
+                difference = self.all_accuracies[iteration] - self.all_accuracies[iteration-1]
+                difference_cycle = self.all_accuracies[iteration] - self.all_accuracies[iteration-2]
+                if np.abs(difference) < 0.0001 or np.abs(difference_cycle) < 0.0001:
+                    self.counter_stale_iterations += 1
+                else:
+                    self.counter_stale_iterations = 0                
             else:
-                self.counter_stale_iterations = 0
+                raise ValueError("Invalid method for convergence check. Must be accuracy or likelihood.")
+            # print(difference,np.abs(difference) < 0.0001)
+
         return False
 
     # Returns gating probabilities for experts column-wise for all datapoints x
@@ -551,16 +574,19 @@ class MoDT():
             exp_linear_model / np.expand_dims(exp_linear_model.sum(axis=1), axis=1)
         )
 
-    # h function
-    def _posterior_probabilties(self, DT_experts):
-        confidence_correct = np.zeros([self.n_input, self.n_experts])  # TODO: See Nina version (?)
+    # e step expectation / h function
+    def _posterior_probabilties(self, return_predictions=False):
+        confidence_correct = np.zeros([self.n_input, self.n_experts]) 
         for expert_index in range(0, self.n_experts):
-            dt = DT_experts[expert_index]
+            dt = self.DT_experts[expert_index]
             dt_probability = dt.predict_proba(self.X)
             confidence_correct[:, expert_index] = dt_probability[np.arange(self.n_input), self.y.flatten().astype(int)]
 
         multiplication = self.gating_values * confidence_correct
-        return(multiplication / np.expand_dims(np.sum(multiplication, axis=1), axis=1))
+        if return_predictions:
+            return multiplication / np.expand_dims(np.sum(multiplication, axis=1), axis=1), confidence_correct
+        else:
+            return multiplication / np.expand_dims(np.sum(multiplication, axis=1), axis=1)
 
     def score(self, X , y):
         if len(X) != len(y):
@@ -640,3 +666,31 @@ class MoDT():
             print(black_box_algorithm, "accuracy:", clf.score(self.X, self.y))
 
         return labels
+
+    def _likelihood(self):
+
+        # Hard loss 
+        # g_argmax = np.argmax(g, axis=1)
+        # g_hard = np.zeros((g.shape[0],g.shape[1]))
+        
+        # for idx in range(g_hard.shape[0]):
+        #     g_hard[idx, g_argmax[idx]] = 1
+
+        # g = g_hard
+
+        # predictions_experts = np.zeros([self.n_input, self.n_experts]) 
+        # for expert_index in range(0, self.n_experts):
+        #     dt = self.all_DTs[iteration][expert_index]
+        #     dt_probability = dt.predict_proba(self.X)
+        #     predictions_experts[:, expert_index] = dt_probability[np.arange(self.n_input), self.y.flatten().astype(int)]
+
+        # # formula taken from: https://ieeexplore.ieee.org/stamp/stamp.jsp?tp=&arnumber=6215056 (Twenty Years of Mixture of Experts)
+        
+        g = self.gating_values
+
+        # h = (g * predictions_experts) / (g * predictions_experts).sum(axis=1, keepdims=True)
+        # h = np.nan_to_num(h)
+
+        h, predictions_experts  = self._posterior_probabilties(return_predictions=True)
+
+        return np.sum(np.sum(h * (np.log(g + 1e-05) + np.log(predictions_experts + 1e-05)), axis=1))
