@@ -63,7 +63,7 @@ optimization_methods = ["least_squares_linear_regression","ridge_regression","la
 storage_name = "sqlite:///optuna_results_optimization_methods.sqlite3"
 
 start = timer()
-n_trials = 10
+n_trials = 500
 rows = []
 for dataset in datasets:
     print("Starting",dataset[0],"...")
