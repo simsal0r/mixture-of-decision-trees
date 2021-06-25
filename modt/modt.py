@@ -545,7 +545,7 @@ class MoDT():
             if based_on == "likelihood":
                 difference = self.all_likelihood[iteration] - self.all_likelihood[iteration-1]
                 difference_cycle = self.all_likelihood[iteration] - self.all_likelihood[iteration-2]
-                if np.abs(difference) < self.all_likelihood[iteration-2] * -0.005 or np.abs(difference_cycle) < self.all_likelihood[iteration-2] * -0.005:
+                if np.abs(difference) < self.all_likelihood[iteration-2] * -0.0025 or np.abs(difference_cycle) < self.all_likelihood[iteration-2] * -0.0025:
                     self.counter_stale_iterations += 1
                 else:
                     self.counter_stale_iterations = 0
