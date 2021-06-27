@@ -62,7 +62,8 @@ distributions = {
     "learning_rate_decay": optuna.distributions.UniformDistribution(0.975,1),
     "n_experts": optuna.distributions.IntUniformDistribution(3, 3),
     "max_depth": optuna.distributions.IntUniformDistribution(2, 2),
-    "use_2_dim_gate_based_on": optuna.distributions.CategoricalDistribution(["feature_importance", "feature_importance_lda", "PCA", None]),
+    "use_2_dim_gate_based_on": optuna.distributions.CategoricalDistribution([None]),
+    #"use_2_dim_gate_based_on": optuna.distributions.CategoricalDistribution(["feature_importance", "feature_importance_lda", "PCA"]),
     "use_posterior": optuna.distributions.CategoricalDistribution([True, False]),
 
     "optimization_method": optuna.distributions.CategoricalDistribution(["least_squares_linear_regression","ridge_regression","lasso_regression","matmul"]),
@@ -82,7 +83,7 @@ distributions_BGM = {
     "weight_cutoff": optuna.distributions.UniformDistribution(0.0,0.0),
 }
 
-storage_name = "sqlite:///optuna_results_parameter_tuning.sqlite3"
+storage_name = "sqlite:///optuna_results_parameter_tuning_full_gate.sqlite3"
 
 start = timer()
 n_trials = 2 # per initialization_method
@@ -117,6 +118,16 @@ for dataset in datasets:
                 beta = trial.params["beta"]
                 gamma = trial.params["gamma"]
                 parameters["initialization_method"] = KDTmeans_init(alpha=alpha, beta=beta, gamma=gamma)
+            elif isinstance(initialization_method, BGM_init):
+                trial = study.ask({**distributions, **distributions_BGM})
+                mean_precision_prior = trial.params["mean_precision_prior"]
+                weight_concentration_prior_type = trial.params["weight_concentration_prior_type"]
+                weight_concentration_prior = trial.params["weight_concentration_prior"]
+                weight_cutoff = trial.params["weight_cutoff"]
+                parameters["initialization_method"] = BGM_init(mean_precision_prior=mean_precision_prior,
+                                                                weight_concentration_prior_type=weight_concentration_prior_type,
+                                                                weight_concentration_prior=weight_concentration_prior,
+                                                                weight_cutoff=weight_cutoff)
             else:
                 trial = study.ask(distributions)
 
@@ -168,7 +179,7 @@ for dataset in datasets:
             
             study.tell(trial, np.mean(accuracies_validation)) 
 
-            print("Completed trial:", idx_trial, initialization_method)
+            print("Completed trial:", idx_trial, initialization_method.__class__.__name__)
             gc.collect() 
 
 print("Duration", timer() - start)
