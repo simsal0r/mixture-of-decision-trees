@@ -14,6 +14,8 @@ from sklearn.linear_model import Lasso
 from sklearn.mixture import GaussianMixture
 from sklearn.discriminant_analysis import LinearDiscriminantAnalysis
 
+from modt._initialization import *
+
 
 class MoDT():
 
@@ -25,8 +27,8 @@ class MoDT():
                  max_depth,
                  init_learning_rate=100,
                  learning_rate_decay=0.995,
-                 initialize_with="random",
-                 initialization_method=None,
+                 #initialize_with="random",
+                 initialization_method="random",
                  use_2_dim_gate_based_on=None,
                  use_2_dim_clustering=False,
                  black_box_algorithm=None,
@@ -49,7 +51,6 @@ class MoDT():
         self.n_experts = n_experts
         self.max_depth = max_depth
         self.iterations = iterations
-        self.initialize_with = initialize_with
         self.initialization_method = initialization_method
         self.init_learning_rate = init_learning_rate
         self.use_2_dim_gate_based_on = use_2_dim_gate_based_on
@@ -123,7 +124,7 @@ class MoDT():
         
 
         # Initialize gating values
-        self.theta_gating = self._initialize_theta(self.initialize_with, self.initialization_method)
+        self.theta_gating = self._initialize_theta(self.initialization_method)
         self.init_theta = self.theta_gating.copy()
 
     def _check_argument_validity(self):
@@ -295,16 +296,21 @@ class MoDT():
         X = self.scaler.transform(X)
         return np.append(X, np.ones([X.shape[0], 1]), axis=1)  # Add bias
 
-    def _initialize_theta(self, initialize_with, initialization_method=None):
+    def _initialize_theta(self, initialization_method="random"):
         start = timer()
 
-        if initialize_with == "random":
+        if initialization_method == "random":
             if self.use_2_dim_gate_based_on is not None:
                 n_features = 3
             else:
                 n_features = self.X.shape[1]
             initialized_theta = np.random.rand(n_features, self.n_experts)
-        elif initialize_with == "pass_method":
+        elif (isinstance(initialization_method, Kmeans_init) or 
+              isinstance(initialization_method, KDTmeans_init) or
+              isinstance(initialization_method, DBSCAN_init) or
+              isinstance(initialization_method, Boosting_init) or
+              isinstance(initialization_method, BGM_init)
+             ):
             initialized_theta = initialization_method._calculate_theta(self)
         else:
             raise Exception("Invalid initalization method specified.")

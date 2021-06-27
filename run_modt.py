@@ -13,7 +13,6 @@ parameters = {
     "max_depth": 2,
     "init_learning_rate": 10,
     "learning_rate_decay": 1,
-    "initialize_with": "pass_method",
     "initialization_method": Kmeans_init(),
     "feature_names": None,
     "class_names": None,
