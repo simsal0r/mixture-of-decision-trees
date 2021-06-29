@@ -18,19 +18,26 @@ from sklearn.utils import shuffle
 from sklearn.model_selection import train_test_split
 from sklearn.model_selection import RepeatedKFold
 
+#     optuna_hyperparameters_per_dataset.py
+#  -> analysis_hyperparameters.ipynb
+#  -> benchmark_best_hyperparameters.py
+#  -> analysis_hyperparameters_runs.ipynb
+
+storage_name = "sqlite:///optuna_results_parameter_tuning_full_gate.sqlite3"
+
 datasets = [
 #     ["banknote_input.pd","banknote_target.pd"],
-# #    ["adult_input.pd","adult_target.pd"],
-#     ["bank_input.pd","bank_target.pd"],
+#     ["adult_input.pd","adult_target.pd"], #L
+#     ["bank_input.pd","bank_target.pd"], #L
 #     ["breast_cancer_input.np","breast_cancer_target.np"],
-#     ["hrss_input.pd","hrss_target.pd"],
-#     ["iris_input.pd","iris_target.pd"],
-#     ["occupancy_input.pd","occupancy_target.pd"],
-#     ["pdm6_input.pd","pdm6_target.pd"],
-# #    ["sensorless_input.pd","sensorless_target.pd"],
-#     ["steel_input.pd","steel_target.pd"],
-#     ["abalone_input.pd","abalone_target.pd"], 
-#     ["contraceptive_input.pd","contraceptive_target.pd"], 
+#     ["hrss_input.pd","hrss_target.pd"], #L
+#    ["iris_input.pd","iris_target.pd"],
+#    ["occupancy_input.pd","occupancy_target.pd"], # Too Eeasy
+    ["pdm6_input.pd","pdm6_target.pd"], # Too Easy
+#    ["sensorless_input.pd","sensorless_target.pd"], #VL
+    ["steel_input.pd","steel_target.pd"],
+    ["abalone_input.pd","abalone_target.pd"], 
+    ["contraceptive_input.pd","contraceptive_target.pd"], 
     ["cars_input.pd","cars_target.pd"], 
     ["students_input.pd","students_target.pd"], 
 ]
@@ -43,7 +50,7 @@ parameters = {
     "max_depth": None,
     "init_learning_rate": None,
     "learning_rate_decay": None,
-    "initialization_method": "random",
+    "initialization_method": None,
     "feature_names": None,
     "class_names": None,
     "use_2_dim_gate_based_on": None,
@@ -83,10 +90,8 @@ distributions_BGM = {
     "weight_cutoff": optuna.distributions.UniformDistribution(0.0,0.0),
 }
 
-storage_name = "sqlite:///optuna_results_parameter_tuning_full_gate.sqlite3"
-
 start = timer()
-n_trials = 2 # per initialization_method
+n_trials = 100 # per initialization_method
 
 for dataset in datasets:
 

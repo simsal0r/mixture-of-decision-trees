@@ -20,6 +20,16 @@ def _fit_theta(self_modt,X_gate,labels,theta_fittig_method):
     else:
         raise Exception("Invalid theta fitting method. Use lda or lr.")
 
+def _get_desired_theta_dimensions(self_modt):
+    if self_modt.use_2_dim_gate_based_on is not None:
+        n_features = 3
+    else:
+        n_features = self_modt.X.shape[1]
+    return (n_features, self_modt.n_experts)
+
+def _random_initialization_fallback(shape):
+    return np.random.rand(shape[0], shape[1])
+
 def _theta_calculation_lr(self_modt,X,y):
     if np.sum(np.in1d(y, np.arange(0,len(np.unique(y)))) == False) > 0:
         if self_modt.verbose:
@@ -33,7 +43,7 @@ def _theta_calculation_lr(self_modt,X,y):
 
     return lr.coef_.T
 
-def _theta_calculation_lda(self_modt,X,y):
+def _theta_calculation_lda(self_modt, X, y):
     clf = LinearDiscriminantAnalysis()
     clf.fit(X, y)
     if self_modt.verbose:
@@ -44,13 +54,21 @@ def _theta_calculation_lda(self_modt,X,y):
         theta[:,1] = clf.coef_ * -1
     else:
         theta = clf.coef_.T
+    theta[-1] = clf.intercept_ # Replace bias row with intercept of LDA
 
-        n_experts = clf.coef_.T.shape[1]
-        if n_experts != self_modt.n_experts:
-            print("LDA has eliminated an empty region. Setting number of experts to {}.".format(n_experts))
-            self_modt.n_experts = n_experts
+    desired_shape = _get_desired_theta_dimensions(self_modt)
 
-    theta[-1] = clf.intercept_ # Replace bias row with intercept of LDR
+    if theta.shape != (desired_shape):
+        if self_modt.verbose or True:  # TODO: Change
+            print("LDA separation unsuccessful. Gate initialized randomly.")
+        return _random_initialization_fallback(desired_shape)
+
+        # n_experts = clf.coef_.T.shape[1]
+        # if n_experts != self_modt.n_experts:
+        #     print("LDA has eliminated an empty region. Setting number of experts to {}.".format(n_experts))
+        #     self_modt.n_experts = n_experts
+
+    
     return theta
 
 class Kmeans_init():
@@ -227,15 +245,30 @@ class BGM_init():
 
         X, X_gate = self_modt._select_X_internal()
 
-        bgm = BayesianGaussianMixture(n_components=self_modt.n_experts,  # method can result in fewer but not more experts
-                                      covariance_type=self.covariance_type,
-                                      init_params=self.init_params,
-                                      max_iter=self.max_iter,
-                                      mean_precision_prior=self.mean_precision_prior,
-                                      weight_concentration_prior_type=self.weight_concentration_prior_type,  # dirichlet_distribution -> more uniform than dirichlet_process
-                                      weight_concentration_prior=self.weight_concentration_prior  # Lower -> Fewer components
-                                      )
-        bgm.fit(X)
+        parameters = {
+                       "n_components" : self_modt.n_experts,  # method can result in fewer but not more experts
+                       "covariance_type" : self.covariance_type,
+                       "init_params" : self.init_params,
+                       "max_iter" : self.max_iter,
+                       "mean_precision_prior" : self.mean_precision_prior,
+                       "weight_concentration_prior_type" : self.weight_concentration_prior_type,  # dirichlet_distribution -> more uniform than dirichlet_process
+                       "weight_concentration_prior" : self.weight_concentration_prior  # Lower -> Fewer components
+        }
+
+        try:
+            bgm = BayesianGaussianMixture(**parameters)
+            bgm.fit(X)
+        except ValueError:
+            try:
+                print("Covariance matrix ill-defined, increasing reg_covar...")
+                parameters["reg_covar"] = 1e-5
+                bgm = BayesianGaussianMixture(**parameters)
+                bgm.fit(X)
+            except ValueError:
+                print("Covariance matrix ill-defined, initializing randomly...")
+                shape = _get_desired_theta_dimensions(self_modt)
+                return _random_initialization_fallback(shape)
+
         probabilities = bgm.predict_proba(X)
         probabilities[:, bgm.weights_ < self.weight_cutoff] = -1
         labels = np.argmax(probabilities, axis=1)  # Label number range can have gaps
