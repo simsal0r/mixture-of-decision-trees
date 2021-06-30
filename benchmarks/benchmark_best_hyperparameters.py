@@ -41,9 +41,10 @@ parameters_fit = {
     "use_posterior": None,
     }
 
-df = pd.read_pickle("dataframes/df_top10_hyperparameters_per_dataset.pd")
+df = pd.read_pickle("dataframes/df_top10_hyperparameters_per_dataset_full_gate.pd")
+#df = pd.read_pickle("dataframes/df_top10_hyperparameters_per_dataset_2D_gate.pd")
 datasets = np.unique(df["Data X"])
-repeats = 2
+repeats = 3 # For each found hyperparameter
 
 def k_fold(parameters,parameters_fit,n_repeats):
 
@@ -98,7 +99,7 @@ for dataset in datasets:
     print("Starting dataset", dataset)
     accuracies_training = []
     accuracies_validation = []  
-    for _, row in df[df["Data X"] == dataset].iterrows():
+    for _, row in df[df["Data X"] == dataset].iterrows():  # For each hyperparameter combination
         parameters["X"] = row["Data X"]
         parameters["y"] = row["Data y"]
         if row.initialization_method == "str":  # Random saved as str in df
@@ -139,7 +140,7 @@ for dataset in datasets:
     results_row.append(row)
 
 df_results = pd.DataFrame(results_row)
-pickle.dump(df_results, open("dataframes/df_runs_with_hyperparameters_per_dataset.pd", "wb"))
+pickle.dump(df_results, open("dataframes/df_runs_with_hyperparameters_per_dataset_full_gate.pd", "wb"))
 print("Duration", timer() - start)
 
     

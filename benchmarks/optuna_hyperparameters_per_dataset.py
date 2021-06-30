@@ -23,17 +23,17 @@ from sklearn.model_selection import RepeatedKFold
 #  -> benchmark_best_hyperparameters.py
 #  -> analysis_hyperparameters_runs.ipynb
 
-storage_name = "sqlite:///optuna_results_parameter_tuning_full_gate.sqlite3"
+storage_name = "sqlite:///optuna_results_parameter_tuning_2D_gate.sqlite3"
 
 datasets = [
-#     ["banknote_input.pd","banknote_target.pd"],
-#     ["adult_input.pd","adult_target.pd"], #L
-#     ["bank_input.pd","bank_target.pd"], #L
-#     ["breast_cancer_input.np","breast_cancer_target.np"],
-#     ["hrss_input.pd","hrss_target.pd"], #L
+    ["banknote_input.pd","banknote_target.pd"], # too easy
+    ["adult_input.pd","adult_target.pd"], #L
+    ["bank_input.pd","bank_target.pd"], #L
+    ["breast_cancer_input.np","breast_cancer_target.np"],
+    ["hrss_input.pd","hrss_target.pd"], #L
 #    ["iris_input.pd","iris_target.pd"],
-#    ["occupancy_input.pd","occupancy_target.pd"], # Too Eeasy
-    ["pdm6_input.pd","pdm6_target.pd"], # Too Easy
+#    ["occupancy_input.pd","occupancy_target.pd"], # too easy
+#    ["pdm6_input.pd","pdm6_target.pd"], # Too Easy
 #    ["sensorless_input.pd","sensorless_target.pd"], #VL
     ["steel_input.pd","steel_target.pd"],
     ["abalone_input.pd","abalone_target.pd"], 

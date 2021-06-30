@@ -27,7 +27,6 @@ class MoDT():
                  max_depth,
                  init_learning_rate=100,
                  learning_rate_decay=0.995,
-                 #initialize_with="random",
                  initialization_method="random",
                  use_2_dim_gate_based_on=None,
                  use_2_dim_clustering=False,
