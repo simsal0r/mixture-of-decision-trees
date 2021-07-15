@@ -4,15 +4,17 @@ from functools import lru_cache
 from timeit import default_timer as timer
 import pickle
 
-from sklearn.linear_model import LinearRegression
 from scipy.special import softmax
 from sklearn import tree
 from sklearn.preprocessing import StandardScaler
 from sklearn.decomposition import PCA
+from sklearn.linear_model import LinearRegression
+from sklearn.linear_model import LogisticRegression
 from sklearn.linear_model import Ridge
 from sklearn.linear_model import Lasso
 from sklearn.mixture import GaussianMixture
 from sklearn.discriminant_analysis import LinearDiscriminantAnalysis
+from xgboost import XGBClassifier
 
 from modt._initialization import *
 
@@ -74,22 +76,7 @@ class MoDT():
             self.y_before_surrogate = self.y
             self.y = self._transform_y_with_surrogate_model(black_box_algorithm)
 
-        self.scaler = self._create_scaler(self.X)  # Standardization on input. Scaler also needed for prediction of new observations.
-        self.X = self._preprocess_X(self.X)  # Apply standardization and add bias
-
-        self.X_top_2_mask = self._get_2_dim_feature_importance_mask(method="DT")  # Always calculate Top 2 features for plotting; 2D + Bias
-        self.X_2_dim = self.X[:, self.X_top_2_mask]  # For plotting; 2D + bias; components in case of PCA
-
-        if self.use_2_dim_gate_based_on is not None:
-            if self.use_2_dim_gate_based_on == "feature_importance":
-                pass  # This default choice has been calculated already.
-            elif self.use_2_dim_gate_based_on == "feature_importance_lda":
-                self.X_top_2_mask = self._get_2_dim_feature_importance_mask(method="LDA")  
-                self.X_2_dim = self.X[:, self.X_top_2_mask]  
-            elif self.use_2_dim_gate_based_on == "PCA":
-                self.X_2_dim = self._perform_PCA()
-            else:
-                raise Exception("Invalid method for gate dimensionality reduction.")
+        self._setup_2_dimensional_gate()
 
 
     def _initialize_fitting_variables(self):
@@ -207,21 +194,74 @@ class MoDT():
         X_one_hot = np.array(X_one_hot)
         return X_one_hot, X_one_hot_columns
 
+    def _setup_2_dimensional_gate(self):
+        self.scaler = self._create_scaler(self.X)  # Standardization on input. Scaler also needed for prediction of new observations.
+        self.X = self._preprocess_X(self.X)  # Apply standardization and add bias
+
+        self.X_top_2_mask = self._get_2_dim_feature_importance_mask(method="DT")  # Always calculate Top 2 features for plotting; 2D + Bias
+        self.X_2_dim = self.X[:, self.X_top_2_mask]  # For plotting; 2D + bias; components in case of PCA
+
+        if self.use_2_dim_gate_based_on is not None:
+            if self.use_2_dim_gate_based_on == "feature_importance":
+                pass  # This default choice has been calculated above.
+            elif self.use_2_dim_gate_based_on == "PCA":
+                self.X_2_dim = self._perform_PCA()
+            else:
+                if self.use_2_dim_gate_based_on == "feature_importance_lda":
+                    self.X_top_2_mask = self._get_2_dim_feature_importance_mask(method="LDA")                       
+                elif self.use_2_dim_gate_based_on == "feature_importance_lda_max":
+                    self.X_top_2_mask = self._get_2_dim_feature_importance_mask(method="LDA_max")                       
+                elif self.use_2_dim_gate_based_on == "feature_importance_lr":
+                    self.X_top_2_mask = self._get_2_dim_feature_importance_mask(method="LR")  
+                elif self.use_2_dim_gate_based_on == "feature_importance_lr_max":
+                    self.X_top_2_mask = self._get_2_dim_feature_importance_mask(method="LR_max")  
+                elif self.use_2_dim_gate_based_on == "feature_importance_xgb":
+                    self.X_top_2_mask = self._get_2_dim_feature_importance_mask(method="XGB")  
+                elif self.use_2_dim_gate_based_on == "feature_importance_pca_loadings":
+                    self.X_top_2_mask = self._get_2_dim_feature_importance_mask(method="PCA_loadings")  
+                else:
+                    raise Exception("Invalid method for gate dimensionality reduction.")
+                self.X_2_dim = self.X[:, self.X_top_2_mask]     
+
     def _get_2_dim_feature_importance_mask(self, method="DT"):
         if method == "DT":
             clf = tree.DecisionTreeClassifier()
-            clf = clf.fit(self.X, self.y)
-            importances = -clf.feature_importances_
+            clf.fit(self.X, self.y)
+            importances = clf.feature_importances_
+        elif method == "XGB":
+            clf = XGBClassifier()
+            clf.fit(self.X, self.y)
+            importances = clf.feature_importances_
         elif method == "LDA": 
             clf = LinearDiscriminantAnalysis()
             clf.fit(self.X, self.y)
-            weights = np.abs(clf.coef_) / np.sum(np.abs(clf.coef_))
-            importances = -weights[0]
+            importances = np.sum(np.abs(clf.coef_), axis=0) / np.sum(np.sum(np.abs(clf.coef_), axis=0))
+        elif method == "LDA_max": 
+            clf = LinearDiscriminantAnalysis()
+            clf.fit(self.X, self.y)
+            importances = np.max(np.abs(clf.coef_) ,axis=0) / np.sum(np.max(np.abs(clf.coef_), axis=0))
+        elif method == "LR": 
+            clf = LogisticRegression(solver='liblinear')
+            clf.fit(self.X, self.y)
+            importances = np.sum(np.abs(clf.coef_), axis=0) / np.sum(np.sum(np.abs(clf.coef_), axis=0))
+        elif method == "LR_max": 
+            clf = LogisticRegression(solver='liblinear')
+            clf.fit(self.X, self.y)
+            importances = np.max(np.abs(clf.coef_), axis=0) / np.sum(np.max(np.abs(clf.coef_), axis=0))
+        elif method == "PCA_loadings":
+            pca = PCA(n_components=2).fit(self.X)
+            loadings = pd.DataFrame(pca.components_.T * np.sqrt(pca.explained_variance_))
+
+            #  Features with the hightest correlation in the first two components
+            mask = [loadings[0].sort_values(ascending=False).index[0]]
+            mask.append(loadings[1].sort_values(ascending=False).index[0])
+            mask.append(-1)  # We also need the last (bias) column for regression etc.
+            return mask
         else:
             raise ValueError("Invalid method for feature importance.")
 
-        # TODO: Rework
-        features_10 = []  # Features that have more than 10 unique values
+        importances = -importances  # Reverse sign for sorting convenience 
+        features_10 = []  # Preferably use features that have more than 10 unique values
         for column in range(0, self.X.shape[1]):
             if np.unique(self.X[:, column]).size > 10:
                 features_10.append(column)
@@ -237,16 +277,16 @@ class MoDT():
                 features_10_idx.append(np.where(top_features_idx_all == feature)[0][0])
 
             mask[features_10_idx] = True
-
             top_features_idx = top_features_idx_all[mask][:2]  # Select 2 best features
+            self.top_features_idx = top_features_idx
 
             if self.verbose:
-                print("Top 2 Feature Importance:", clf.feature_importances_[top_features_idx])
-                print("Top 2 Feature Importance w/ features with few unique values:", clf.feature_importances_[np.argsort(importances)[:2]])
-
-            self.top_features_idx = top_features_idx
+                print("Top 2 feature importance with features that have at least 10 unique values:", importances[top_features_idx])
+                print("Top 2 feature importance including features w/ fewer than 10 unique values:", importances[np.argsort(importances)[:2]])
         else:
             self.top_features_idx = np.argsort(importances)[:2]
+            if self.verbose:
+                print("Top 2 feature importance including features w/ fewer than 10 unique values:", importances[np.argsort(importances)[:2]])
 
         # X with only 2 dimensions (+1 bias) for interpretable gates
         mask = list(self.top_features_idx)
@@ -267,13 +307,11 @@ class MoDT():
         return X, X_gate
 
     def _transform_X_into_2_dim_for_prediction(self, X, method):
-        if method == "feature_importance" or method == "feature_importance_lda":
+        if method != "PCA":
             X = X[:, self.X_top_2_mask]
-        elif method == "PCA":
+        else:
             X = self.pca.transform(X)
             X = np.append(X, np.ones([X.shape[0], 1]), axis=1)  # Bias
-        else:
-            raise ValueError("Invalid method for gate dimensionality reduction.")
 
         return X
 
@@ -298,12 +336,15 @@ class MoDT():
     def _initialize_theta(self, initialization_method="random"):
         start = timer()
 
-        if initialization_method == "random":
+        if initialization_method == "random" or isinstance(initialization_method, Random_init):
             if self.use_2_dim_gate_based_on is not None:
                 n_features = 3
             else:
                 n_features = self.X.shape[1]
+            if isinstance(initialization_method, Random_init):
+                np.random.seed(initialization_method.seed)
             initialized_theta = np.random.rand(n_features, self.n_experts)
+            
         elif (isinstance(initialization_method, Kmeans_init) or 
               isinstance(initialization_method, KDTmeans_init) or
               isinstance(initialization_method, DBSCAN_init) or

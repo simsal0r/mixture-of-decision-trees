@@ -13,7 +13,7 @@ parameters = {
     "max_depth": 2,
     "init_learning_rate": 10,
     "learning_rate_decay": 1,
-    "initialization_method": Kmeans_init(),
+    "initialization_method": Random_init(42),
     "feature_names": None,
     "class_names": None,
     "use_2_dim_gate_based_on": "feature_importance",
@@ -29,7 +29,9 @@ parameters_fit = {
 
 
 modt = MoDT(**parameters)
-print(modt.learn_rate)
+#print(modt.learn_rate)
 modt.fit(**parameters_fit)
-print(modt.gating_values)
-modt.score_internal_disjoint()
+#print(modt.gating_values)
+#modt.score_internal_disjoint()
+
+print(modt.init_theta)

@@ -47,7 +47,6 @@ class TestMoDT(unittest.TestCase):
         modt.fit(**parameters_fit)
         return modt
 
-
     def test_fi_DT(self):
         self.set_default_paramas()
         self.parameters["use_2_dim_gate_based_on"] = "feature_importance"
@@ -57,6 +56,55 @@ class TestMoDT(unittest.TestCase):
         self.set_default_paramas()
         self.parameters["use_2_dim_gate_based_on"] = "feature_importance_lda"
         self.assertTrue(TestMoDT.fit_modt(self.parameters, self.parameters_fit).duration_fit is not None)
+
+    def test_fi_lda_max(self):
+        self.set_default_paramas()
+        self.parameters["use_2_dim_gate_based_on"] = "feature_importance_lda_max"
+        self.assertTrue(TestMoDT.fit_modt(self.parameters, self.parameters_fit).duration_fit is not None)
+
+    def test_fi_lr_max(self):
+        self.set_default_paramas()
+        self.parameters["use_2_dim_gate_based_on"] = "feature_importance_lr_max"
+        self.assertTrue(TestMoDT.fit_modt(self.parameters, self.parameters_fit).duration_fit is not None)
+
+    def test_fi_lr(self):
+        self.set_default_paramas()
+        self.parameters["use_2_dim_gate_based_on"] = "feature_importance_lr"
+        self.assertTrue(TestMoDT.fit_modt(self.parameters, self.parameters_fit).duration_fit is not None) 
+
+    def test_fi_xgb(self):
+        self.set_default_paramas()
+        self.parameters["use_2_dim_gate_based_on"] = "feature_importance_xgb"
+        self.assertTrue(TestMoDT.fit_modt(self.parameters, self.parameters_fit).duration_fit is not None)
+
+    def test_fi_pca_loadings(self):
+        self.set_default_paramas()
+        self.parameters["use_2_dim_gate_based_on"] = "feature_importance_pca_loadings"
+        self.assertTrue(TestMoDT.fit_modt(self.parameters, self.parameters_fit).duration_fit is not None)    
+
+    def test_fi_2_dim_dataset(self):
+        self.set_default_paramas()
+        X = pickle.load(open("datasets/generated6_input.np", "rb"))
+        y = pickle.load(open("datasets/generated6_target.np", "rb"))
+        self.parameters["X"] = X
+        self.parameters["y"] = y
+
+        self.assertTrue(TestMoDT.fit_modt(self.parameters, self.parameters_fit).duration_fit is not None)
+
+        self.parameters["use_2_dim_gate_based_on"] = "feature_importance_lda"
+        self.assertTrue(TestMoDT.fit_modt(self.parameters, self.parameters_fit).duration_fit is not None)
+
+        self.parameters["use_2_dim_gate_based_on"] = "feature_importance_lda_max"
+        self.assertTrue(TestMoDT.fit_modt(self.parameters, self.parameters_fit).duration_fit is not None)
+
+        self.parameters["use_2_dim_gate_based_on"] = "feature_importance_lr_max"
+        self.assertTrue(TestMoDT.fit_modt(self.parameters, self.parameters_fit).duration_fit is not None)
+
+        self.parameters["use_2_dim_gate_based_on"] = "feature_importance_lr"
+        self.assertTrue(TestMoDT.fit_modt(self.parameters, self.parameters_fit).duration_fit is not None) 
+
+        self.parameters["use_2_dim_gate_based_on"] = "feature_importance_xgb"
+        self.assertTrue(TestMoDT.fit_modt(self.parameters, self.parameters_fit).duration_fit is not None)        
 
     def test_prediction_input_has_other_features(self):
         self.set_default_paramas()

@@ -71,6 +71,11 @@ def _theta_calculation_lda(self_modt, X, y):
     
     return theta
 
+class Random_init():
+
+    def __init__(self, seed=None):
+        self.seed = seed
+
 class Kmeans_init():
 
     def __init__(self,theta_fittig_method="lda"):
