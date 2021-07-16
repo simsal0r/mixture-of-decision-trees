@@ -27,7 +27,9 @@ def _get_desired_theta_dimensions(self_modt):
         n_features = self_modt.X.shape[1]
     return (n_features, self_modt.n_experts)
 
-def _random_initialization_fallback(shape):
+def _random_initialization_fallback(self_modt, shape):
+    if True or self_modt.verbose:  # TODO
+        print("Separation unsuccessful. Gate initialized randomly.")
     return np.random.rand(shape[0], shape[1])
 
 def _theta_calculation_lr(self_modt,X,y):
@@ -41,7 +43,12 @@ def _theta_calculation_lr(self_modt,X,y):
     if self_modt.verbose:
         print("Initialization LR score:", lr.score(X, expert_target_matrix))
 
-    return lr.coef_.T
+    theta = lr.coef_.T
+    desired_shape = _get_desired_theta_dimensions(self_modt)
+    if theta.shape != (desired_shape):
+        return _random_initialization_fallback(self_modt, desired_shape)
+    
+    return theta
 
 def _theta_calculation_lda(self_modt, X, y):
     clf = LinearDiscriminantAnalysis()
@@ -59,9 +66,7 @@ def _theta_calculation_lda(self_modt, X, y):
     desired_shape = _get_desired_theta_dimensions(self_modt)
 
     if theta.shape != (desired_shape):
-        if self_modt.verbose or True:  # TODO: Change
-            print("LDA separation unsuccessful. Gate initialized randomly.")
-        return _random_initialization_fallback(desired_shape)
+        return _random_initialization_fallback(self_modt,desired_shape)
 
         # n_experts = clf.coef_.T.shape[1]
         # if n_experts != self_modt.n_experts:
@@ -121,9 +126,10 @@ class KDTmeans_init():
             
             for cluster_idx in range(0,n_cluster):
                 distances = distance.cdist([cluster_centers[cluster_idx,:]], X, 'euclidean').flatten()
-                weights = 1.0/(distances**self.alpha + self.beta)
+                weights = 1.0 / (distances ** self.alpha + self.beta)
+                weights = np.nan_to_num(weights)
 
-                DT_clusters[cluster_idx] = tree.DecisionTreeClassifier(max_depth = 2)
+                DT_clusters[cluster_idx] = tree.DecisionTreeClassifier(max_depth = self_modt.max_depth)
                 DT_clusters[cluster_idx].fit(X=X, y=self_modt.y, sample_weight=weights)
 
                 confidence = DT_clusters[cluster_idx].predict_proba(X=X)[np.arange(self_modt.n_input),self_modt.y]
@@ -140,8 +146,8 @@ class KDTmeans_init():
             DT_predictions = np.zeros((self_modt.n_input,n_cluster))
             for cluster_idx in range(0,n_cluster):    
                 DT_predictions[:,cluster_idx] = DT_clusters[cluster_idx].predict(X=X)
-            predicted_labels = DT_predictions[np.arange(self_modt.n_input),cluster_labels] #TODO: does not work for more than 2 clusters use f1 or sth
-            accuracy = (np.count_nonzero(predicted_labels.astype(int) == self_modt.y) / self_modt.n_input)
+            predicted_labels = DT_predictions[np.arange(self_modt.n_input), cluster_labels] 
+            accuracy = (np.count_nonzero(predicted_labels.astype(int) == self_modt.y.astype(int)) / self_modt.n_input)
             
             self_modt.all_clustering_accuracies.append(accuracy)
             self_modt.all_cluster_labels.append(cluster_labels)   
@@ -150,7 +156,7 @@ class KDTmeans_init():
             
             if np.allclose(cluster_centers,new_centers):
                 if self_modt.verbose:
-                    print("Convergence at iteration",iteration)
+                    print("Convergence at iteration", iteration)
                 break
             else:
                 cluster_centers = new_centers
