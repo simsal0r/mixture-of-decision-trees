@@ -61,7 +61,7 @@ class MoDT():
 
         self._check_argument_validity()
 
-        (self.X,  # Bias and standardization will be added
+        (self.X,  # Bias and standardization will be added later
          self.X_original,  # Original input as numpy array 
          self.X_original_pd,
          self.X_one_hot, # TODO: Remove
@@ -76,10 +76,14 @@ class MoDT():
             self.y_before_surrogate = self.y
             self.y = self._transform_y_with_surrogate_model(black_box_algorithm)
 
-        self._setup_2_dimensional_gate()
+        self.scaler = None
+        self.X_top_2_mask = None
+        self.X_2_dim = None
+        self._setup_2_dimensional_gate()  # Sets the above variables
 
 
     def _initialize_fitting_variables(self):
+        """Initalize model variables that are need for the fitting process"""
 
         self.gating_values = None
         self.DT_experts = None
@@ -108,7 +112,6 @@ class MoDT():
         self.all_cluster_labels = []
         self.all_cluster_centers = []
         
-
         # Initialize gating values
         self.theta_gating = self._initialize_theta(self.initialization_method)
         self.init_theta = self.theta_gating.copy()
@@ -221,7 +224,7 @@ class MoDT():
                     self.X_top_2_mask = self._get_2_dim_feature_importance_mask(method="PCA_loadings")  
                 else:
                     raise Exception("Invalid method for gate dimensionality reduction.")
-                self.X_2_dim = self.X[:, self.X_top_2_mask]     
+                self.X_2_dim = self.X[:, self.X_top_2_mask] 
 
     def _get_2_dim_feature_importance_mask(self, method="DT"):
         if method == "DT":
@@ -531,7 +534,7 @@ class MoDT():
         gating_values_hard = np.zeros([self.n_input, self.n_experts])
         gating_values_hard[np.arange(0, self.n_input), gate] = 1
 
-        DT_experts_disjoint = [None for i in range(self.n_experts)]
+        DT_experts_disjoint = [None for _ in range(self.n_experts)]
         if tree_algorithm == "sklearn":
             if self.X_contains_categorical:
                 X, _ = self._one_hot_encode(self.X_original_pd)
@@ -542,7 +545,7 @@ class MoDT():
                 DT_experts_disjoint[index_expert].fit(X=X, y=self.y, sample_weight=gating_values_hard[:, index_expert])
         elif tree_algorithm == "optimal_trees":
             from interpretableai import iai
-            for index_expert in range(0, self.n_experts):
+            for index_expert in range(self.n_experts):
                 mask = gating_values_hard[:, index_expert] == 1
                 X = self.X_original_pd[mask].copy()
 
