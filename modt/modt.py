@@ -1,10 +1,8 @@
 import numpy as np
 import pandas as pd
-from functools import lru_cache
 from timeit import default_timer as timer
 import pickle
 
-from scipy.special import softmax
 from sklearn import tree
 from sklearn.preprocessing import StandardScaler
 from sklearn.decomposition import PCA
@@ -76,7 +74,9 @@ class MoDT():
             self.y_before_surrogate = self.y
             self.y = self._transform_y_with_surrogate_model(black_box_algorithm)
 
-        self.scaler = None
+        self.scaler = self._create_scaler(self.X)  # Create standardization model. Also needed for prediction of new observations.
+        self.X = self._preprocess_X(self.X)  # Apply standardization and add bias
+
         self.X_top_2_mask = None
         self.X_2_dim = None
         self._setup_2_dimensional_gate()  # Sets the above variables
@@ -192,14 +192,23 @@ class MoDT():
             return np.array([self.y_map[y] for y in y_prediction])
 
     def _one_hot_encode(self, X):
+        """Convert unique values of categorical features into new binary (one-hot) features"""
         X_one_hot = pd.get_dummies(X, columns=list(X.select_dtypes(include=['object', 'category']).columns))
         X_one_hot_columns = X_one_hot.columns
         X_one_hot = np.array(X_one_hot)
         return X_one_hot, X_one_hot_columns
 
+    def _create_scaler(self, X):
+        """Create a standardization model."""
+        return(StandardScaler().fit(X))
+
+    def _preprocess_X(self, X):
+        """Apply standardization and add bias column."""
+        X = self.scaler.transform(X)
+        return np.append(X, np.ones([X.shape[0], 1]), axis=1)  # Add bias                
+
     def _setup_2_dimensional_gate(self):
-        self.scaler = self._create_scaler(self.X)  # Standardization on input. Scaler also needed for prediction of new observations.
-        self.X = self._preprocess_X(self.X)  # Apply standardization and add bias
+        """Delegate gate dimensionality reduction."""
 
         self.X_top_2_mask = self._get_2_dim_feature_importance_mask(method="DT")  # Always calculate Top 2 features for plotting; 2D + Bias
         self.X_2_dim = self.X[:, self.X_top_2_mask]  # For plotting; 2D + bias; components in case of PCA
@@ -225,6 +234,7 @@ class MoDT():
                 else:
                     raise Exception("Invalid method for gate dimensionality reduction.")
                 self.X_2_dim = self.X[:, self.X_top_2_mask] 
+
 
     def _get_2_dim_feature_importance_mask(self, method="DT"):
         if method == "DT":
@@ -327,14 +337,6 @@ class MoDT():
         X_pca = pca.transform(self.X)
         X_pca = np.append(X_pca, np.ones([X_pca.shape[0], 1]), axis=1)
         return X_pca
-
-    def _create_scaler(self, X):
-        return(StandardScaler().fit(X))
-
-    def _preprocess_X(self, X):
-        """Perform standardization and add bias."""
-        X = self.scaler.transform(X)
-        return np.append(X, np.ones([X.shape[0], 1]), axis=1)  # Add bias
 
     def _initialize_theta(self, initialization_method="random"):
         start = timer()
@@ -466,7 +468,7 @@ class MoDT():
                             use_posterior=use_posterior,
                             **optimization_kwargs)
 
-        self.best_iteration = np.argmax(self.all_accuracies)
+        self.best_iteration = self.argmax_last(self.all_accuracies)
         self.train_disjoint_trees(iteration=self.best_iteration, tree_algorithm="sklearn")
             
         end = timer()
@@ -475,6 +477,13 @@ class MoDT():
             print("Duration EM fit:", self.duration_fit)
 
     def _e_step(self, X_gate):
+        """
+        E-step of the EM algorithm. 
+        Calculate gating values from theta.
+        Train DTs.
+        Calculate expectation.
+        """
+
         self.gating_values = self._gating_softmax(X=X_gate, theta_gating=self.theta_gating)
         self.gating_values = np.nan_to_num(self.gating_values)
         self._train_trees()
@@ -482,10 +491,41 @@ class MoDT():
         self.posterior_probabilities = self._posterior_probabilties()
 
     def _m_step(self, X_gate, iteration, optimization_method, use_posterior, **optimization_kwargs):
+        """M-step of the EM algorithm. Update current theta."""
+
         theta_new = self._update_theta(X_gate, optimization_method, use_posterior, **optimization_kwargs)
         self.theta_gating += self.learn_rate[iteration] * theta_new
 
+    # Returns gating probabilities for experts column-wise for all datapoints x
+    def _gating_softmax(self, X, theta_gating):
+        # Use theta to calculate raw gating values
+        linear_model = np.matmul(X, theta_gating)
+        if linear_model.shape[1] != self.n_experts:
+            raise Exception()
+        # Softmax # substract the row's max from each row
+        exp_linear_model = np.exp(linear_model - np.max(linear_model, axis=1, keepdims=True))
+        return(
+            exp_linear_model / np.expand_dims(exp_linear_model.sum(axis=1), axis=1)
+        )
+
+    def _posterior_probabilties(self, return_predictions=False):
+        """Expectation of the E-step"""
+
+        confidence_correct = np.zeros([self.n_input, self.n_experts]) 
+        for expert_index in range(0, self.n_experts):
+            dt = self.DT_experts[expert_index]
+            dt_probability = dt.predict_proba(self.X)
+            confidence_correct[:, expert_index] = dt_probability[np.arange(self.n_input), self.y.flatten().astype(int)]
+
+        multiplication = self.gating_values * confidence_correct
+        if return_predictions:
+            return multiplication / np.expand_dims(np.sum(multiplication, axis=1), axis=1), confidence_correct
+        else:
+            return multiplication / np.expand_dims(np.sum(multiplication, axis=1), axis=1)        
+
     def _update_theta(self, X_gate, optimization_method, use_posterior, **optimization_kwargs):
+        """Calculate an updated theta that will be added to the current theta."""
+
         if use_posterior is True:
             optimization_target = self.posterior_probabilities
         else:
@@ -568,6 +608,7 @@ class MoDT():
         self.DT_experts_disjoint = DT_experts_disjoint
 
     def _theta_recalculation_moet2(self, posterior_probabilities, gating, X):
+        """Computationally expensive; used in MOET paper"""
         R = np.zeros([self.n_experts * self.n_features_of_X, self.n_experts * self.n_features_of_X])
 
         for idx_input in range(self.n_input):
@@ -611,33 +652,8 @@ class MoDT():
 
         return False
 
-    # Returns gating probabilities for experts column-wise for all datapoints x
-    def _gating_softmax(self, X, theta_gating):
-        # Use theta to calculate raw gating values
-        linear_model = np.matmul(X, theta_gating)
-        if linear_model.shape[1] != self.n_experts:
-            raise Exception()
-        # Softmax # substract the row's max from each row
-        exp_linear_model = np.exp(linear_model - np.max(linear_model, axis=1, keepdims=True))
-        return(
-            exp_linear_model / np.expand_dims(exp_linear_model.sum(axis=1), axis=1)
-        )
-
-    # e step expectation / h function
-    def _posterior_probabilties(self, return_predictions=False):
-        confidence_correct = np.zeros([self.n_input, self.n_experts]) 
-        for expert_index in range(0, self.n_experts):
-            dt = self.DT_experts[expert_index]
-            dt_probability = dt.predict_proba(self.X)
-            confidence_correct[:, expert_index] = dt_probability[np.arange(self.n_input), self.y.flatten().astype(int)]
-
-        multiplication = self.gating_values * confidence_correct
-        if return_predictions:
-            return multiplication / np.expand_dims(np.sum(multiplication, axis=1), axis=1), confidence_correct
-        else:
-            return multiplication / np.expand_dims(np.sum(multiplication, axis=1), axis=1)
-
     def score(self, X , y):
+        """Calculate prediction accuracy on a possibly new dataset."""
         if len(X) != len(y):
             raise ValueError("X and y have different lengths.")
 
@@ -646,6 +662,7 @@ class MoDT():
         return accuracy
 
     def score_internal(self, iteration):
+        """Calculate prediction accuracy on the training data."""
         predicted_labels = self.predict_internal(iteration)
         accuracy = (np.count_nonzero(predicted_labels.astype(int) == self.y.astype(int)) / self.n_input)
         return accuracy
@@ -743,3 +760,12 @@ class MoDT():
         h, predictions_experts  = self._posterior_probabilties(return_predictions=True)
 
         return np.sum(np.sum(h * (np.log(g + 1e-05) + np.log(predictions_experts + 1e-05)), axis=1))
+
+    @staticmethod
+    def argmax_last(list):
+        """
+        Returns the index of the maximum value of a list.
+        If there are multiple maxima, the last value is chosen.
+        """
+        reverse_list = list[::-1]
+        return len(reverse_list) - np.argmax(reverse_list) - 1

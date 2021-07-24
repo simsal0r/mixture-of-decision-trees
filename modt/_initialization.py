@@ -14,9 +14,9 @@ from sklearn.utils.multiclass import unique_labels
 def _fit_theta(self_modt,X_gate,labels,theta_fittig_method):
     self_modt.init_labels = labels
     if theta_fittig_method == "lda":
-        return _theta_calculation_lda(self_modt,X_gate,labels)
+        return _theta_calculation_lda(self_modt, X_gate, labels)
     elif theta_fittig_method == "lr":
-        return _theta_calculation_lr(self_modt,X_gate,labels)
+        return _theta_calculation_lr(self_modt, X_gate, labels)
     else:
         raise Exception("Invalid theta fitting method. Use lda or lr.")
 
