@@ -55,7 +55,7 @@ class MoDT():
         self.use_2_dim_gate_based_on = use_2_dim_gate_based_on
         self.use_2_dim_clustering = use_2_dim_clustering
         self.learning_rate_decay = learning_rate_decay
-        self.learn_rate = [self.init_learning_rate * (self.learning_rate_decay ** max(float(i), 0.0)) for i in range(iterations)]
+        self.learn_rate = [self.init_learning_rate * (self.learning_rate_decay ** i) for i in range(iterations)]
 
         self._check_argument_validity()
 
@@ -635,7 +635,7 @@ class MoDT():
             if based_on == "likelihood":
                 difference = self.all_likelihood[iteration] - self.all_likelihood[iteration-1]
                 difference_cycle = self.all_likelihood[iteration] - self.all_likelihood[iteration-2]
-                if np.abs(difference) < self.all_likelihood[iteration-2] * -0.0025 or np.abs(difference_cycle) < self.all_likelihood[iteration-2] * -0.0025:
+                if np.abs(difference) < self.all_likelihood[iteration-2] * 0.0025 or np.abs(difference_cycle) < self.all_likelihood[iteration-2] * 0.0025:
                     self.counter_stale_iterations += 1
                 else:
                     self.counter_stale_iterations = 0
@@ -735,31 +735,30 @@ class MoDT():
 
     def _likelihood(self):
 
-        # Hard loss 
-        # g_argmax = np.argmax(g, axis=1)
-        # g_hard = np.zeros((g.shape[0],g.shape[1]))
-        
-        # for idx in range(g_hard.shape[0]):
-        #     g_hard[idx, g_argmax[idx]] = 1
-
-        # g = g_hard
-
         # predictions_experts = np.zeros([self.n_input, self.n_experts]) 
         # for expert_index in range(0, self.n_experts):
         #     dt = self.all_DTs[iteration][expert_index]
         #     dt_probability = dt.predict_proba(self.X)
         #     predictions_experts[:, expert_index] = dt_probability[np.arange(self.n_input), self.y.flatten().astype(int)]
 
-        # # formula taken from: https://ieeexplore.ieee.org/stamp/stamp.jsp?tp=&arnumber=6215056 (Twenty Years of Mixture of Experts)
+        # Formula taken from: https://ieeexplore.ieee.org/stamp/stamp.jsp?tp=&arnumber=6215056 (Twenty Years of Mixture of Experts)
         
         g = self.gating_values
-
-        # h = (g * predictions_experts) / (g * predictions_experts).sum(axis=1, keepdims=True)
-        # h = np.nan_to_num(h)
-
         h, predictions_experts  = self._posterior_probabilties(return_predictions=True)
+        loss = - np.sum(np.sum(h * (np.log(g + 1e-05) + np.log(predictions_experts + 1e-05)), axis=1))
+        return loss
 
-        return np.sum(np.sum(h * (np.log(g + 1e-05) + np.log(predictions_experts + 1e-05)), axis=1))
+        # if hard_loss:
+        #     g_argmax = np.argmax(g, axis=1)
+        #     g_hard = np.zeros((g.shape[0],g.shape[1]))
+            
+        #     for idx in range(g_hard.shape[0]):
+        #         g_hard[idx, g_argmax[idx]] = 1
+
+        #     loss_h = - np.sum(np.sum(h * (np.log(g_hard + 1e-05) + np.log(predictions_experts + 1e-05)), axis=1))
+        #     return loss, loss_h
+
+            
 
     @staticmethod
     def argmax_last(list):
