@@ -104,13 +104,13 @@ def visualize_decision_area(predictor, X, y, enable_scatter=True, axis_digits=Fa
     #plt.show()
 
 
-def accuracy_line(modt):
+def accuracy_line(modt, color="#348ABD"):
     # accuracy = []
     # for iteration in range(0,modt.iterations):
     #     accuracy.append(modt.accuracy_score(iteration))
     accuracy = modt.all_accuracies
     print("Min: ", min(accuracy), "Max: ", max(accuracy))
-    plt.plot(accuracy, c="blue")
+    plt.plot(accuracy, c=color)
 
 def theta_development(modt):
     theta = np.array(modt.all_theta_gating)
