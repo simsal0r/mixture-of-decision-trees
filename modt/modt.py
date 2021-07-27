@@ -16,7 +16,6 @@ from xgboost import XGBClassifier
 
 from modt._initialization import *
 
-
 class MoDT():
 
     def __init__(self,
@@ -88,6 +87,7 @@ class MoDT():
         self.gating_values = None
         self.DT_experts = None
         self.DT_experts_disjoint = None
+        self.DT_experts_alternative_algorithm = None
         self.all_DTs = []
         self.all_theta_gating = []
         self.all_gating_values = []
@@ -469,7 +469,7 @@ class MoDT():
                             **optimization_kwargs)
 
         self.best_iteration = self.argmax_last(self.all_accuracies)
-        self.train_disjoint_trees(iteration=self.best_iteration, tree_algorithm="sklearn")
+        self.train_disjoint_trees(iteration=self.best_iteration, tree_algorithm="sklearn_default")
             
         end = timer()
         self.duration_fit = end - start
@@ -567,15 +567,17 @@ class MoDT():
         self.all_DTs.append(self.DT_experts.copy())
         self.all_gating_values.append(self.gating_values.copy())
 
-    def train_disjoint_trees(self, iteration, tree_algorithm="sklearn"):
-        """Train DTs with one-hot gates as weights""" 
+    def train_disjoint_trees(self, iteration, tree_algorithm):
+        """Train DTs on separate subsets""" 
+
         gating_values = self.all_gating_values[iteration]
         gate = np.argmax(gating_values, axis=1)
         gating_values_hard = np.zeros([self.n_input, self.n_experts])
         gating_values_hard[np.arange(0, self.n_input), gate] = 1
-
         DT_experts_disjoint = [None for _ in range(self.n_experts)]
-        if tree_algorithm == "sklearn":
+        DT_experts_alternative_algorithm = [None for _ in range(self.n_experts)]
+
+        if tree_algorithm == "sklearn_default":
             if self.X_contains_categorical:
                 X, _ = self._one_hot_encode(self.X_original_pd)
             else:
@@ -583,29 +585,54 @@ class MoDT():
             for index_expert in range(0, self.n_experts):
                 DT_experts_disjoint[index_expert] = tree.DecisionTreeClassifier(max_depth=self.max_depth)
                 DT_experts_disjoint[index_expert].fit(X=X, y=self.y, sample_weight=gating_values_hard[:, index_expert])
+
+            self.DT_experts_disjoint = DT_experts_disjoint
+
+        # Alternative algorithms
+
         elif tree_algorithm == "optimal_trees":
-            from interpretableai import iai
+
+            from interpretableai import iai  #  Commercial software
+
             for index_expert in range(self.n_experts):
-                mask = gating_values_hard[:, index_expert] == 1
+                mask = gating_values_hard[:, index_expert]
                 X = self.X_original_pd[mask].copy()
 
-                X.loc[:, X.dtypes == 'object'] = X.select_dtypes(['object']).apply(lambda x: x.astype('category'))  # Optimal trees cant handle object dtypes
-                pickle.dump(X, open("output/iai_X_e{}.p".format(index_expert), "wb"))
+                X.loc[:, X.dtypes == 'object'] = X.select_dtypes(['object']).apply(lambda x: x.astype('category'))  # Optimal trees cannot handle object dtypes
+                pickle.dump(X, open("temp/iai_X_e{}.p".format(index_expert), "wb"))
 
                 y = self.y_original[mask]
-                pickle.dump(y, open("output/iai_y_e{}.p".format(index_expert), "wb"))
+                pickle.dump(y, open("temp/iai_y_e{}.p".format(index_expert), "wb"))
+
                 # grid = iai.GridSearch(iai.OptimalTreeClassifier(),max_depth=2)
-                # X1 = pickle.load( open("output/iai_X.p", "rb" ))
-                # y1 = pickle.load( open ("output/iai_y.p", "rb"))
+                # X1 = pickle.load( open("temp/iai_X.p", "rb" ))
+                # y1 = pickle.load( open ("temp/iai_y.p", "rb"))
                 # z = grid.fit(X=X1, y=y1)
+
         elif tree_algorithm == "h2o":
+
+            # Allows multi-class but performs binary prediction
+
+            from modt._alternative_DTs import H2o_classifier
+
+            server = H2o_classifier(max_depth = -1)
+            server.start_server()
+
             for index_expert in range(0, self.n_experts):
-                DT_experts_disjoint[index_expert] = tree.DecisionTreeClassifier(max_depth=self.max_depth)
-                DT_experts_disjoint[index_expert].fit(X=self.X_original, y=self.y, sample_weight=gating_values_hard[:, index_expert])
+                mask = gating_values_hard[:, index_expert]
+                mask = mask.astype(bool)
+                X = self.X_original_pd[mask].copy()  
+                y = self.y_original[mask].copy()  
+
+                DT_experts_alternative_algorithm[index_expert] = H2o_classifier(max_depth=self.max_depth)
+                DT_experts_alternative_algorithm[index_expert].fit(X=X, y=y, expert_identifier=index_expert)
+                DT_experts_alternative_algorithm[index_expert].plot()
+
+            self.DT_experts_alternative_algorithm = DT_experts_alternative_algorithm
+
+            server.stop_server()
         else:
             raise Exception("Invalid tree algorithm.")
-
-        self.DT_experts_disjoint = DT_experts_disjoint
 
     def _theta_recalculation_moet2(self, posterior_probabilities, gating, X):
         """Computationally expensive; used in MOET paper"""
@@ -734,15 +761,11 @@ class MoDT():
         return labels
 
     def _likelihood(self):
+        """
+        Negative likelihood function / loss.
+        Formula taken from: https://ieeexplore.ieee.org/stamp/stamp.jsp?tp=&arnumber=6215056 (Twenty Years of Mixture of Experts).
+        """
 
-        # predictions_experts = np.zeros([self.n_input, self.n_experts]) 
-        # for expert_index in range(0, self.n_experts):
-        #     dt = self.all_DTs[iteration][expert_index]
-        #     dt_probability = dt.predict_proba(self.X)
-        #     predictions_experts[:, expert_index] = dt_probability[np.arange(self.n_input), self.y.flatten().astype(int)]
-
-        # Formula taken from: https://ieeexplore.ieee.org/stamp/stamp.jsp?tp=&arnumber=6215056 (Twenty Years of Mixture of Experts)
-        
         g = self.gating_values
         h, predictions_experts  = self._posterior_probabilties(return_predictions=True)
         loss = - np.sum(np.sum(h * (np.log(g + 1e-05) + np.log(predictions_experts + 1e-05)), axis=1))
@@ -757,8 +780,6 @@ class MoDT():
 
         #     loss_h = - np.sum(np.sum(h * (np.log(g_hard + 1e-05) + np.log(predictions_experts + 1e-05)), axis=1))
         #     return loss, loss_h
-
-            
 
     @staticmethod
     def argmax_last(list):
