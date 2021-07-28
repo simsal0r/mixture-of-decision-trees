@@ -104,7 +104,7 @@ class H2o_classifier():
             
         _ = subprocess.call(gv_args)        
 
-        png_file_name = 'temp/h2o_tree_e_' + self.expert_identifier + '.png'
+        png_file_name = 'output/h2o_tree_e_' + self.expert_identifier + '.png'
         png_args = str('dot -Tpng ' + gv_file_name + ' -o ' + png_file_name)
         png_args = png_args.split()
 
