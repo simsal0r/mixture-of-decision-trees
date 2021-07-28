@@ -145,15 +145,16 @@ class MoDT():
             X_new = X
             X_original = X
             # TODO: Insert categorical treatment
+
+            if feature_names is not None:
+                if len(feature_names) != X.shape[1]:
+                    raise Exception("Feature names list length ({}) inconsistent with X ({}).".format(len(feature_names), X.shape[1]))
+                feature_names_new = np.array(feature_names) 
+
         else:
             raise Exception("X must be Pandas DataFrame or Numpy array.")
 
         y_new, y_original, class_names_new = self._interpret_input_y(y)
-
-        if feature_names is not None:
-            if len(feature_names) != X.shape[1]:
-                raise Exception("Feature names list length ({}) inconsistent with X ({}).".format(len(feature_names), X.shape[1]))
-            feature_names_new = np.array(feature_names)
 
         if class_names is not None:
             class_names_new = np.array(class_names)
@@ -596,18 +597,17 @@ class MoDT():
 
             for index_expert in range(self.n_experts):
                 mask = gating_values_hard[:, index_expert]
-                X = self.X_original_pd[mask].copy()
+                mask = mask.astype(bool)
+                X = self.X_original_pd[mask].copy()  
+                y = self.y_original[mask].copy()  
 
-                X.loc[:, X.dtypes == 'object'] = X.select_dtypes(['object']).apply(lambda x: x.astype('category'))  # Optimal trees cannot handle object dtypes
-                pickle.dump(X, open("temp/iai_X_e{}.p".format(index_expert), "wb"))
+                 # Optimal trees cannot handle object dtypes
+                X.loc[:, X.dtypes == 'object'] = X.select_dtypes(['object']).apply(lambda x: x.astype('category')) 
 
-                y = self.y_original[mask]
-                pickle.dump(y, open("temp/iai_y_e{}.p".format(index_expert), "wb"))
-
-                # grid = iai.GridSearch(iai.OptimalTreeClassifier(),max_depth=2)
-                # X1 = pickle.load( open("temp/iai_X.p", "rb" ))
-                # y1 = pickle.load( open ("temp/iai_y.p", "rb"))
-                # z = grid.fit(X=X1, y=y1)
+                DT_experts_alternative_algorithm[index_expert] = iai.GridSearch(iai.OptimalTreeClassifier(), max_depth=self.max_depth)
+                DT_experts_alternative_algorithm[index_expert].fit(X, y)
+            
+            self.DT_experts_alternative_algorithm = DT_experts_alternative_algorithm
 
         elif tree_algorithm == "h2o":
 
@@ -631,6 +631,7 @@ class MoDT():
             self.DT_experts_alternative_algorithm = DT_experts_alternative_algorithm
 
             server.stop_server()
+
         else:
             raise Exception("Invalid tree algorithm.")
 
