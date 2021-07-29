@@ -118,11 +118,13 @@ class MoDT():
 
     def _check_argument_validity(self):
         if self.use_2_dim_gate_based_on is None and self.use_2_dim_clustering:
-            raise ValueError("Argument incompatibility.")
+            raise ValueError("Cant use 2D initalization if no initialization is selected.")
         if self.use_2_dim_clustering != False and self.use_2_dim_clustering != True: 
             raise ValueError("use_2_dim_clustering must be True or False")            
         if self.n_experts <= 0:
             raise ValueError("More than 0 experts required.")
+        if self.iterations < 0:
+            raise ValueError("At least 1 iteration is necessary.")
 
     def _interpret_input(self, X, y, feature_names, class_names):
         X_one_hot = None
@@ -215,7 +217,12 @@ class MoDT():
         self.X_2_dim = self.X[:, self.X_top_2_mask]  # For plotting; 2D + bias; components in case of PCA
 
         if self.use_2_dim_gate_based_on is not None:
-            if self.use_2_dim_gate_based_on == "feature_importance":
+            if isinstance(self.use_2_dim_gate_based_on, list):
+                X_top_2_mask = self.use_2_dim_gate_based_on
+                X_top_2_mask.append(-1)
+                self.X_top_2_mask = X_top_2_mask
+                self.X_2_dim = self.X[:, self.X_top_2_mask] 
+            elif self.use_2_dim_gate_based_on == "feature_importance":
                 pass  # This default choice has been calculated above.
             elif self.use_2_dim_gate_based_on == "PCA":
                 self.X_2_dim = self._perform_PCA()
