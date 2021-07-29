@@ -2,6 +2,105 @@ import matplotlib.pyplot as plt
 import numpy as np
 from sklearn import tree
 
+def rand_jitter(arr):
+    """Add small amount of noise to array."""
+    stdev = .005 * (max(arr) - min(arr))
+    return arr + np.random.randn(len(arr)) * stdev
+
+def plot_gating(modt,
+                iteration,
+                ax=None,
+                title=True, 
+                axis_digits=False,
+                axis_ticks=True,
+                jitter=False,
+                inverse_transform_standardization=False):
+
+    point_size = 10 
+    color_schema = ["#E24A33",
+                    "#8EBA42",    
+                    "#81D0DB",
+                    "#FBC15E",
+                    "#B97357",
+                    "#988ED5",]              
+    
+    #plt.figure(figsize=(3,2))
+    ax = plt.gca()
+    y = modt.y
+
+    if modt.use_2_dim_gate_based_on is not None:
+        X = modt.X_2_dim
+    else:
+        X = modt.X_original
+        if X.shape[1] != 2:
+            raise ValueError("X must have 2 dimensions for visualization. Use 2D gate if dataset has more dimensions.")
+
+    if jitter:
+        ax.scatter(rand_jitter(X[:, 0]), rand_jitter(X[:, 1]), c=y, s=point_size, 
+                        clim=(y.min(), y.max()), zorder=3)
+    else:
+        ax.scatter(X[:, 0], X[:, 1], c=y, s=point_size, clim=(y.min(), y.max()), zorder=3)                              
+        
+    ax.axis('tight')
+    if not axis_ticks:
+        ax.axis('off')
+    xlim = ax.get_xlim()
+    ylim = ax.get_ylim() 
+    
+    # Add feature names to axis
+    if modt.feature_names_one_hot is not None:
+        feature_names = modt.feature_names_one_hot
+    else:
+        feature_names = modt.feature_names
+    if feature_names is None:
+        print("Warning: Dataset does not include feature names.")
+    else:
+        names_selected_features = feature_names[modt.X_top_2_mask[:-1]]
+        ax.set_xlabel(names_selected_features[0], fontsize=12)        
+        ax.set_ylabel(names_selected_features[1], fontsize=12)
+
+    # Overwrite axis ticks by reversing the standardization of the original ticks
+    if inverse_transform_standardization: 
+        mask = modt.X_top_2_mask[:-1]
+        placeholder = np.zeros((len(ax.get_xticks()),modt.X.shape[1]-1))
+        placeholder[:,mask[0]] = ax.get_xticks()
+        new_x_ticks = modt.scaler.inverse_transform(placeholder)[:,mask[0]]
+        new_x_ticks = np.around(new_x_ticks,1)
+        ax.set_xticklabels(new_x_ticks)
+        
+        placeholder = np.zeros((len(ax.get_yticks()),modt.X.shape[1]-1))
+        placeholder[:,mask[1]] = ax.get_yticks()
+        new_y_ticks = modt.scaler.inverse_transform(placeholder)[:,mask[1]]
+        new_y_ticks = np.around(new_y_ticks,1)
+        ax.set_yticklabels(new_y_ticks) 
+        
+    if not axis_digits:
+        ax.set_yticklabels([])
+        ax.set_xticklabels([])
+
+    # Create 200*200 sample points. 
+    xx, yy = np.meshgrid(np.linspace(*xlim, num=200),
+                         np.linspace(*ylim, num=200))
+    grid = np.c_[xx.ravel(), yy.ravel()]
+
+    if modt.use_2_dim_gate_based_on is not None:
+        grid = np.append(grid, np.ones([grid.shape[0], 1]),axis=1) # Bias
+        Z = modt.get_expert(grid, iteration, internal=True).reshape(xx.shape)
+    else:
+        Z = modt.get_expert(grid, iteration, internal=False).reshape(xx.shape)
+
+    # Create a contour plot with the results Z
+    n_classes = len(np.unique(Z))
+    ax.contourf(xx, yy, Z, alpha=0.6,
+                           levels=np.arange(n_classes + 1) - 0.5,
+                           colors=color_schema,
+                           zorder=1)
+    
+    if title:
+        plt.title("iteration: {}".format(iteration))
+        
+
+
 def visualize_gating(modt,
                      iteration,
                      ax=None,
