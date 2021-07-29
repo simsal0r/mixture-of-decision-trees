@@ -14,37 +14,36 @@ from sklearn import tree
 from sklearn.preprocessing import normalize
 from sklearn.model_selection import RepeatedKFold
 
-#     optuna_hyperparameters_per_dataset.py
-#  -> analysis_hyperparameters.ipynb
-#  -> benchmark_best_hyperparameters.py
-#  -> analysis_hyperparameters_runs.ipynb
+#     optuna_ex1_hyperparameters_per_dataset.py
+#  -> analysis_ex1_hyperparameters.ipynb
+#  -> benchmark_ex1_best_hyperparameters.py
+#  -> analysis_ex1_hyperparameters_best.ipynb
 
 parameters = {
-    "X": None,
-    "y": None,
-    "n_experts": 3,
+    "X": "overwritten",
+    "y": "overwritten",
+    "n_experts": "overwritten",
     "iterations": 100,
-    "max_depth": 2,
-    "init_learning_rate": None,
-    "learning_rate_decay": None,
-    "initialization_method": None,
+    "max_depth": "overwritten",
+    "init_learning_rate": "overwritten",
+    "learning_rate_decay": "overwritten",
+    "initialization_method": "overwritten",
     "feature_names": None,
     "class_names": None,
-    "use_2_dim_gate_based_on": None,
-    "use_2_dim_clustering": False,
+    "use_2_dim_gate_based_on": "overwritten",
+    "use_2_dim_clustering": "overwritten", 
     "black_box_algorithm": None,
     }
 
 parameters_fit = {
-    "optimization_method": None,
+    "optimization_method": "overwritten",
     "early_stopping": False,
-    "use_posterior": None,
     }
 
-df = pd.read_pickle("dataframes/df_top10_hyperparameters_per_dataset_full_gate.pd")
-#df = pd.read_pickle("dataframes/df_top10_hyperparameters_per_dataset_2D_gate.pd")
+#df = pd.read_pickle("dataframes/ex1_df_top10_hyperparameters_per_dataset_FD_e3_d2.pd")
+df = pd.read_pickle("dataframes/ex1_df_top10_hyperparameters_per_dataset_2D_e3_d2.pd") #CHANGE
 datasets = np.unique(df["Data X"])
-repeats = 3 # For each found hyperparameter
+repeats = 1 # For each found hyperparameter
 
 def k_fold(parameters,parameters_fit,n_repeats):
 
@@ -102,6 +101,14 @@ for dataset in datasets:
     for _, row in df[df["Data X"] == dataset].iterrows():  # For each hyperparameter combination
         parameters["X"] = row["Data X"]
         parameters["y"] = row["Data y"]
+        parameters["init_learning_rate"] = row["params_init_learning_rate"]
+        parameters["learning_rate_decay"] = row["params_learning_rate_decay"]
+        parameters_fit["optimization_method"] = row["params_optimization_method"]
+        parameters['use_2_dim_gate_based_on'] = row['params_use_2_dim_gate_based_on']
+        parameters['use_2_dim_clustering'] = row['params_use_2_dim_clustering']
+        parameters['max_depth'] = row['params_max_depth']
+        parameters['n_experts'] = row['params_n_experts']
+
         if row.initialization_method == "str":  # Random saved as str in df
             parameters["initialization_method"] = "random"
         elif row.initialization_method == "Kmeans_init":
@@ -119,16 +126,10 @@ for dataset in datasets:
             parameters["initialization_method"] = BGM_init(weight_concentration_prior=weight_concentration_prior, weight_cutoff=weight_cutoff, weight_concentration_prior_type=weight_concentration_prior_type,mean_precision_prior=mean_precision_prior)
         else:
             raise ValueError("Can't interpret initialization method.")
-        parameters["init_learning_rate"] = row["params_init_learning_rate"]
-        parameters["learning_rate_decay"] = row["params_learning_rate_decay"]
-        parameters_fit["optimization_method"] = row["params_optimization_method"]
-        parameters_fit["use_posterior"] = row["params_use_posterior"]
 
         k_fold_results = k_fold(parameters, parameters_fit, n_repeats=repeats)
         accuracies_training.append(k_fold_results["accuracy_train"])
         accuracies_validation.append(k_fold_results["accuracy_val"])
-
-        # 2 GATE LDA
 
     row = {
         "dataset" : row["Data X"],
@@ -140,7 +141,7 @@ for dataset in datasets:
     results_row.append(row)
 
 df_results = pd.DataFrame(results_row)
-pickle.dump(df_results, open("dataframes/df_runs_with_hyperparameters_per_dataset_full_gate.pd", "wb"))
+pickle.dump(df_results, open("dataframes/ex1_df_runs_with_hyperparameters_per_dataset_2D_e3_d2.pd", "wb")) #CHANGE
 print("Duration", timer() - start)
 
     

@@ -18,63 +18,68 @@ from sklearn.utils import shuffle
 from sklearn.model_selection import train_test_split
 from sklearn.model_selection import RepeatedKFold
 
-#     optuna_hyperparameters_per_dataset.py
-#  -> analysis_hyperparameters.ipynb
-#  -> benchmark_best_hyperparameters.py
-#  -> analysis_hyperparameters_runs.ipynb
+#     optuna_ex1_hyperparameters_per_dataset.py
+#  -> analysis_ex1_hyperparameters.ipynb
+#  -> benchmark_ex1_best_hyperparameters.py
+#  -> analysis_ex1_hyperparameters_best.ipynb
 
-storage_name = "sqlite:///optuna_results_parameter_tuning_2D_gate.sqlite3"
+storage_name = "sqlite:///optuna_databases/optuna_ex1_parameter_tuning_2D_e3_d2.sqlite3"  #CHANGE
 
 datasets = [
-    ["banknote_input.pd","banknote_target.pd"], # too easy
-    ["adult_input.pd","adult_target.pd"], #L
-    ["bank_input.pd","bank_target.pd"], #L
-    ["breast_cancer_input.np","breast_cancer_target.np"],
-    ["hrss_input.pd","hrss_target.pd"], #L
-#    ["iris_input.pd","iris_target.pd"],
-#    ["occupancy_input.pd","occupancy_target.pd"], # too easy
-#    ["pdm6_input.pd","pdm6_target.pd"], # Too Easy
-#    ["sensorless_input.pd","sensorless_target.pd"], #VL
-    ["steel_input.pd","steel_target.pd"],
     ["abalone_input.pd","abalone_target.pd"], 
-    ["contraceptive_input.pd","contraceptive_target.pd"], 
+    ["adult_input.pd","adult_target.pd"], # Large
+    ["banknote_input.pd","banknote_target.pd"], # Easy
+    ["bank_input.pd","bank_target.pd"], # Large
+    ["breast_cancer_input.np","breast_cancer_target.np"],
     ["cars_input.pd","cars_target.pd"], 
-    ["students_input.pd","students_target.pd"], 
+    ["contraceptive_input.pd","contraceptive_target.pd"], 
+    ["generated6_input.np","generated6_target.np"],
+    ["hrss_input.pd","hrss_target.pd"], # Large
+    ["iris_input.pd","iris_target.pd"],
+    ["steel_input.pd","steel_target.pd"],
+    ["students_input.pd","students_target.pd"],
+    #["sensorless_input.pd","sensorless_target.pd"], # Very Large dataset
 ]
 
 parameters = {
-    "X": None,
-    "y": None,
-    "n_experts": None,
+    "X": "overwritten",
+    "y": "overwritten",
+    "n_experts": "overwritten",
     "iterations": 100,
-    "max_depth": None,
-    "init_learning_rate": None,
-    "learning_rate_decay": None,
-    "initialization_method": None,
+    "max_depth": "overwritten",
+    "init_learning_rate": "overwritten",
+    "learning_rate_decay": "overwritten",
+    "initialization_method": "overwritten",
     "feature_names": None,
     "class_names": None,
-    "use_2_dim_gate_based_on": None,
-    "use_2_dim_clustering": False,
+    "use_2_dim_gate_based_on": "overwritten",
+    "use_2_dim_clustering": "overwritten",
     "black_box_algorithm": None,
     }
 
 parameters_fit = {
-    "optimization_method": None,
+    "optimization_method": "overwritten",
     "early_stopping": False,
-    "use_posterior": None,
     }
 
 distributions = {
-    "init_learning_rate": optuna.distributions.UniformDistribution(10,150),
+    "init_learning_rate": optuna.distributions.UniformDistribution(1,150),
     "learning_rate_decay": optuna.distributions.UniformDistribution(0.975,1),
     "n_experts": optuna.distributions.IntUniformDistribution(3, 3),
     "max_depth": optuna.distributions.IntUniformDistribution(2, 2),
-    "use_2_dim_gate_based_on": optuna.distributions.CategoricalDistribution([None]),
-    #"use_2_dim_gate_based_on": optuna.distributions.CategoricalDistribution(["feature_importance", "feature_importance_lda", "PCA"]),
-    "use_posterior": optuna.distributions.CategoricalDistribution([True, False]),
+    #"use_2_dim_gate_based_on": optuna.distributions.CategoricalDistribution([None]), #CHANGE
+    "use_2_dim_clustering": optuna.distributions.CategoricalDistribution([True]), # Set to True for 2D  #CHANGE
+    "use_2_dim_gate_based_on": optuna.distributions.CategoricalDistribution(["feature_importance",  #CHANGE
+                                                                             "feature_importance_lda", 
+                                                                             "feature_importance_lda_max",
+                                                                             "feature_importance_lr",  
+                                                                             "feature_importance_lr_max",  
+                                                                             "feature_importance_pca_loadings",
+                                                                             "feature_importance_xgb",
+                                                                             "PCA"]),
 
-    "optimization_method": optuna.distributions.CategoricalDistribution(["least_squares_linear_regression","ridge_regression","lasso_regression","matmul"]),
-    "use_posterior": optuna.distributions.CategoricalDistribution([True, False]),
+    "optimization_method": optuna.distributions.CategoricalDistribution(["least_squares_linear_regression","ridge_regression","lasso_regression"]),
+
                 }
 
 distributions_KDT_means = {
@@ -90,26 +95,27 @@ distributions_BGM = {
     "weight_cutoff": optuna.distributions.UniformDistribution(0.0,0.0),
 }
 
+initialization_methods = ["random", Kmeans_init(), KDTmeans_init(), BGM_init()]
+
 start = timer()
-n_trials = 100 # per initialization_method
+n_trials = 1 # per initialization_method
+n_startup_trials = 25 # 25 of 100 is random instead of the TPE algorithm.  
 
 for dataset in datasets:
 
     print("Starting",dataset[0],"...")
     data_input = pickle.load(open("../datasets/" + dataset[0], "rb"))
     data_target = pickle.load(open("../datasets/" + dataset[1], "rb"))
-
-    initialization_methods = ["random", Kmeans_init(), KDTmeans_init(), BGM_init()]
+  
     for initialization_method in initialization_methods:
         
         parameters["initialization_method"] = initialization_method
 
         study_name = "{} Hyper: {} {}".format(datetime.now().strftime("%Y.%m.%d %H:%M:%S"), dataset[0], initialization_method.__class__.__name__)
-        study = optuna.create_study(study_name=study_name, directions=["maximize"], sampler=TPESampler(), storage=storage_name)
+        study = optuna.create_study(study_name=study_name, directions=["maximize"], sampler=TPESampler(n_startup_trials=n_startup_trials), storage=storage_name)
         study.set_system_attr("initialization_method", initialization_method.__class__.__name__)
         study.set_system_attr("Data X",  dataset[0])
         study.set_system_attr("Data y", dataset[1])
-
 
         use_dataframe = False
         if isinstance(data_input, pd.core.frame.DataFrame):
@@ -141,8 +147,8 @@ for dataset in datasets:
             parameters["n_experts"] = trial.params["n_experts"]
             parameters["max_depth"] = trial.params["max_depth"]
             parameters["use_2_dim_gate_based_on"] = trial.params["use_2_dim_gate_based_on"]
+            parameters["use_2_dim_clustering"] = trial.params["use_2_dim_clustering"]
 
-            parameters_fit["use_posterior"] = trial.params["use_posterior"]      
             parameters_fit["optimization_method"] = trial.params["optimization_method"]      
                 
             accuracies_training = []
