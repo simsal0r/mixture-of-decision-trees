@@ -16,7 +16,7 @@ parameters = {
     "initialization_method": Random_init(42),
     "feature_names": None,
     "class_names": None,
-    "use_2_dim_gate_based_on": "feature_importance",
+    "use_2_dim_gate_based_on": "feature_importance_xgb",
     "use_2_dim_clustering": False,
     "black_box_algorithm": None,
     }

@@ -250,7 +250,7 @@ class MoDT():
             clf.fit(self.X, self.y)
             importances = clf.feature_importances_
         elif method == "XGB":
-            clf = XGBClassifier()
+            clf = XGBClassifier(use_label_encoder=False, eval_metric="mlogloss")
             clf.fit(self.X, self.y)
             importances = clf.feature_importances_
         elif method == "LDA": 
@@ -443,7 +443,7 @@ class MoDT():
         gating = self._gating_softmax(X_gate, self.all_theta_gating[iteration])
         return np.argmax(gating, axis=1)
 
-    def fit(self, optimization_method="default", early_stopping=True, use_posterior=False, **optimization_kwargs):
+    def fit(self, optimization_method="least_squares_linear_regression", early_stopping=True, use_posterior=False, **optimization_kwargs):
         
         self._initialize_fitting_variables()
         if early_stopping is True:
