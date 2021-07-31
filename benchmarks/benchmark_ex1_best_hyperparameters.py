@@ -43,7 +43,7 @@ parameters_fit = {
 #df = pd.read_pickle("dataframes/ex1_df_top10_hyperparameters_per_dataset_FD_e3_d2.pd")
 df = pd.read_pickle("dataframes/ex1_df_top10_hyperparameters_per_dataset_2D_e3_d2.pd") #CHANGE
 datasets = np.unique(df["Data X"])
-repeats = 1 # For each found hyperparameter
+repeats = 5 # For each found hyperparameter
 
 def k_fold(parameters,parameters_fit,n_repeats):
 
