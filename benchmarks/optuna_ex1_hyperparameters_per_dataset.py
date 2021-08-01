@@ -98,7 +98,7 @@ distributions_BGM = {
 initialization_methods = ["random", Kmeans_init(), KDTmeans_init(), BGM_init()]
 
 start = timer()
-n_trials = 1 # per initialization_method
+n_trials = 100 # per initialization_method
 n_startup_trials = 25 # 25 of 100 is random instead of the TPE algorithm.  
 
 for dataset in datasets:
