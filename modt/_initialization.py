@@ -29,7 +29,7 @@ def _get_desired_theta_dimensions(self_modt):
 
 def _random_initialization_fallback(self_modt, shape):
     if True or self_modt.verbose:  # TODO
-        print("Separation unsuccessful. Gate initialized randomly.")
+        print(str(self_modt.initialization_method) + " separation unsuccessful. Gate initialized randomly instead.")
     return np.random.rand(shape[0], shape[1])
 
 def _theta_calculation_lr(self_modt,X,y):
@@ -271,12 +271,12 @@ class BGM_init():
             bgm.fit(X)
         except ValueError:
             try:
-                print("Covariance matrix ill-defined, increasing reg_covar...")
+                print("BGM: Covariance matrix ill-defined, increasing reg_covar...")
                 parameters["reg_covar"] = 1e-5
                 bgm = BayesianGaussianMixture(**parameters)
                 bgm.fit(X)
             except ValueError:
-                print("Covariance matrix ill-defined, initializing randomly...")
+                print("BGM: Covariance matrix ill-defined, initializing randomly...")
                 shape = _get_desired_theta_dimensions(self_modt)
                 return _random_initialization_fallback(shape)
 
