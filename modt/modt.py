@@ -245,53 +245,56 @@ class MoDT():
 
 
     def _get_2_dim_feature_importance_mask(self, method="DT"):
+
+        X_without_bias = self.X[:,:-1]
+
         if method == "DT":
             clf = tree.DecisionTreeClassifier()
-            clf.fit(self.X, self.y)
+            clf.fit(X_without_bias, self.y)
             importances = clf.feature_importances_
         elif method == "XGB":
             clf = XGBClassifier(use_label_encoder=False, eval_metric="mlogloss")
-            clf.fit(self.X, self.y)
+            clf.fit(X_without_bias, self.y)
             importances = clf.feature_importances_
         elif method == "LDA": 
             clf = LinearDiscriminantAnalysis()
-            clf.fit(self.X, self.y)
+            clf.fit(X_without_bias, self.y)
             importances = np.sum(np.abs(clf.coef_), axis=0) / np.sum(np.sum(np.abs(clf.coef_), axis=0))
         elif method == "LDA_max": 
             clf = LinearDiscriminantAnalysis()
-            clf.fit(self.X, self.y)
+            clf.fit(X_without_bias, self.y)
             importances = np.max(np.abs(clf.coef_) ,axis=0) / np.sum(np.max(np.abs(clf.coef_), axis=0))
         elif method == "LR": 
             clf = LogisticRegression(solver='liblinear')
-            clf.fit(self.X, self.y)
+            clf.fit(X_without_bias, self.y)
             importances = np.sum(np.abs(clf.coef_), axis=0) / np.sum(np.sum(np.abs(clf.coef_), axis=0))
         elif method == "LR_max": 
             clf = LogisticRegression(solver='liblinear')
-            clf.fit(self.X, self.y)
+            clf.fit(X_without_bias, self.y)
             importances = np.max(np.abs(clf.coef_), axis=0) / np.sum(np.max(np.abs(clf.coef_), axis=0))
         elif method == "PCA_loadings":
-            pca = PCA(n_components=2).fit(self.X)
+            pca = PCA(n_components=2).fit(X_without_bias)
             loadings = pd.DataFrame(pca.components_.T * np.sqrt(pca.explained_variance_))
 
             #  Features with the hightest correlation in the first two components
             mask = [loadings[0].sort_values(ascending=False).index[0]]
             mask.append(loadings[1].sort_values(ascending=False).index[0])
-            mask.append(-1)  # We also need the last (bias) column for regression etc.
+            mask.append(-1)  # Add bias (last) column
             return mask
         else:
             raise ValueError("Invalid method for feature importance.")
 
         importances = -importances  # Reverse sign for sorting convenience 
         features_10 = []  # Preferably use features that have more than 10 unique values
-        for column in range(0, self.X.shape[1]):
-            if np.unique(self.X[:, column]).size > 10:
+        for column in range(X_without_bias.shape[1]):
+            if np.unique(X_without_bias[:, column]).size > 10:
                 features_10.append(column)
             else:
                 pass
 
         if len(features_10) > 2:
             top_features_idx_all = np.argsort(importances)
-            mask = np.repeat(False, self.X.shape[1])
+            mask = np.repeat(False, X_without_bias.shape[1])
             features_10_idx = []
 
             for feature in features_10:
