@@ -80,7 +80,6 @@ class MoDT():
         self.X_2_dim = None
         self._setup_2_dimensional_gate()  # Sets the above variables
 
-
     def _initialize_fitting_variables(self):
         """Initalize model variables that are need for the fitting process"""
 
@@ -186,13 +185,6 @@ class MoDT():
         self.y_map = dict(zip(values, keys))
 
         return y_new, y, class_names_new
-
-    def _map_y(self, y_prediction, reverse=False):
-        if reverse:  # Unseen value is outputted as is # TODO: Remove?
-            y_map = {v: k for k, v in self.y_map.items()}
-            return np.array([(y_map[y] if y in y_map else y) for y in y_prediction])
-        else:
-            return np.array([self.y_map[y] for y in y_prediction])
 
     def _one_hot_encode(self, X):
         """Convert unique values of categorical features into new binary (one-hot) features"""
@@ -382,79 +374,6 @@ class MoDT():
 
         return initialized_theta
 
-    def _reapply_feature_encoding(self, X):
-
-        X = pd.get_dummies(X, columns=list(X.select_dtypes(include=['object', 'category']).columns))
-        unseen_features_of_prediction_input = np.setdiff1d(X.columns, self.feature_names_one_hot)
-        missing_features_of_prediction_input = np.setdiff1d(self.feature_names_one_hot, X.columns)
-
-        if unseen_features_of_prediction_input.size > 0:
-            X = X.drop(columns=unseen_features_of_prediction_input, axis=1)
-        if missing_features_of_prediction_input.size > 0:
-            X[missing_features_of_prediction_input] = 0
-
-        return np.array(X)  
- 
-    def predict(self, X):
-        iteration = self.best_iteration
-
-        if self.X_contains_categorical:
-            X = self._reapply_feature_encoding(X)
-           
-        X_gate = self._preprocess_X(X)        
-        if self.use_2_dim_gate_based_on is not None:  # 2D gating function
-            X_gate = self._transform_X_into_2_dim_for_prediction(X_gate, method=self.use_2_dim_gate_based_on)
-
-        DTs = self.DT_experts_disjoint        
-        gating = self._gating_softmax(X_gate, self.all_theta_gating[iteration])
-        selected_gates = np.argmax(gating, axis=1)
-
-        predictions = [DTs[tree_index].predict(X) for tree_index in range(0, len(DTs))]
-        predictions_gate_selected = np.array([predictions[gate][index] for index, gate in enumerate(selected_gates)]).astype("int")
-        return self._map_y(predictions_gate_selected)
-
-    def predict_internal(self, iteration, return_complete=False):
-        if self.use_2_dim_gate_based_on is not None:  # 2D gating function
-            X_gate = self._transform_X_into_2_dim_for_prediction(self.X, method=self.use_2_dim_gate_based_on)
-        else:
-            X_gate = self.X
-
-        DTs = self.all_DTs[iteration]
-        gating = self._gating_softmax(X_gate, self.all_theta_gating[iteration])
-        selected_gates = np.argmax(gating, axis=1)
-
-        predictions = [DTs[tree_index].predict(self.X) for tree_index in range(0, len(DTs))]
-        if return_complete:
-            return np.array(predictions)
-        else:
-            return np.array([predictions[gate][index] for index, gate in enumerate(selected_gates)]).astype("int")
-
-
-    # def predict_disjoint(self, X):
-    #     """Wrapper for disjoint predictions."""
-
-    #     if self.DT_experts_disjoint is None:
-    #         raise Exception("Disjoint DTs must be trained.")
-    #     return self.predict(X, transform=False, disjoint_trees=True)
-
-    def predict_with_expert(self, X, expert, iteration="best"):
-        if iteration == "best":
-            iteration = self.best_iteration
-        X = self._preprocess_X(X)
-        DTs = self.all_DTs[iteration]
-        return DTs[expert].predict(X)
-
-    def get_expert(self, X_gate, iteration="best", internal=False):
-        if iteration == "best":
-            iteration = self.best_iteration        
-        if not internal:
-            X_gate = self._preprocess_X(X_gate)
-            if self.use_2_dim_gate_based_on is not None:
-                X_gate = self._transform_X_into_2_dim_for_prediction(X_gate, method=self.use_2_dim_gate_based_on)
-
-        gating = self._gating_softmax(X_gate, self.all_theta_gating[iteration])
-        return np.argmax(gating, axis=1)
-
     def fit(self, optimization_method="least_squares_linear_regression", early_stopping=True, use_posterior=False, **optimization_kwargs):
         
         self._initialize_fitting_variables()
@@ -574,18 +493,31 @@ class MoDT():
 
         return theta_new
 
+    def _theta_recalculation_moet2(self, posterior_probabilities, gating, X):
+        """Computationally expensive; used in MOET paper"""
+        R = np.zeros([self.n_experts * self.n_features_of_X, self.n_experts * self.n_features_of_X])
+
+        for idx_input in range(self.n_input):
+            for idx_expert in range(self.n_experts):
+                pom1 = gating[idx_input, idx_expert] * (1 - gating[idx_input, idx_expert])
+                pom2 = np.zeros([self.n_experts, self.n_features_of_X])
+                pom2[idx_expert] = X[idx_input]
+                pom2 = pom2.reshape(-1, 1)  # Flatten
+                R += pom1 * (pom2 @ pom2.T)
+
+        e = self._update_theta(X, optimization_method="matmul", use_posterior=False)
+
+        if np.linalg.cond(R) < 1e7:
+            return (np.linalg.inv(R) @ e.flatten()).reshape(-1, self.n_experts)
+        else:
+            return e
+
     def _train_trees(self):
         DT_experts = [None for i in range(self.n_experts)]
         for index_expert in range(0, self.n_experts):
             DT_experts[index_expert] = tree.DecisionTreeClassifier(max_depth=self.max_depth)
             DT_experts[index_expert].fit(X=self.X, y=self.y, sample_weight=self.gating_values[:, index_expert])  # Training weighted by gating values
         self.DT_experts = DT_experts
-
-    def _log_values_to_array(self):
-        # Plotting & Debugging
-        self.all_theta_gating.append(self.theta_gating.copy())  # TODO: Theta and gating values not in sync
-        self.all_DTs.append(self.DT_experts.copy())
-        self.all_gating_values.append(self.gating_values.copy())
 
     def train_disjoint_trees(self, iteration, tree_algorithm):
         """Train DTs on separate subsets""" 
@@ -654,25 +586,6 @@ class MoDT():
         else:
             raise Exception("Invalid tree algorithm.")
 
-    def _theta_recalculation_moet2(self, posterior_probabilities, gating, X):
-        """Computationally expensive; used in MOET paper"""
-        R = np.zeros([self.n_experts * self.n_features_of_X, self.n_experts * self.n_features_of_X])
-
-        for idx_input in range(self.n_input):
-            for idx_expert in range(self.n_experts):
-                pom1 = gating[idx_input, idx_expert] * (1 - gating[idx_input, idx_expert])
-                pom2 = np.zeros([self.n_experts, self.n_features_of_X])
-                pom2[idx_expert] = X[idx_input]
-                pom2 = pom2.reshape(-1, 1)  # Flatten
-                R += pom1 * (pom2 @ pom2.T)
-
-        e = self._update_theta(X, optimization_method="matmul", use_posterior=False)
-
-        if np.linalg.cond(R) < 1e7:
-            return (np.linalg.inv(R) @ e.flatten()).reshape(-1, self.n_experts)
-        else:
-            return e
-
     def _check_for_convergence(self, iteration, based_on="likelihood"):
         max_stale_iterations = 20
         min_iterations = 5
@@ -698,6 +611,105 @@ class MoDT():
             # print(difference,np.abs(difference) < 0.0001)
 
         return False
+
+    def _likelihood(self):
+        """
+        Negative likelihood function / loss.
+        Formula taken from: https://ieeexplore.ieee.org/stamp/stamp.jsp?tp=&arnumber=6215056 (Twenty Years of Mixture of Experts).
+        """
+
+        g = self.gating_values
+        h, predictions_experts  = self._posterior_probabilties(return_predictions=True)
+        loss = - np.sum(np.sum(h * (np.log(g + 1e-05) + np.log(predictions_experts + 1e-05)), axis=1))
+        return loss
+
+        # if hard_loss:
+        #     g_argmax = np.argmax(g, axis=1)
+        #     g_hard = np.zeros((g.shape[0],g.shape[1]))
+            
+        #     for idx in range(g_hard.shape[0]):
+        #         g_hard[idx, g_argmax[idx]] = 1
+
+        #     loss_h = - np.sum(np.sum(h * (np.log(g_hard + 1e-05) + np.log(predictions_experts + 1e-05)), axis=1))
+        #     return loss, loss_h    
+ 
+    def _log_values_to_array(self):
+        # Plotting & Debugging
+        self.all_theta_gating.append(self.theta_gating.copy())  # TODO: Theta and gating values not in sync
+        self.all_DTs.append(self.DT_experts.copy())
+        self.all_gating_values.append(self.gating_values.copy())
+
+    def predict(self, X):
+        iteration = self.best_iteration
+
+        if self.X_contains_categorical:
+            X = self._reapply_feature_encoding(X)
+           
+        X_gate = self._preprocess_X(X)        
+        if self.use_2_dim_gate_based_on is not None:  # 2D gating function
+            X_gate = self._transform_X_into_2_dim_for_prediction(X_gate, method=self.use_2_dim_gate_based_on)
+
+        DTs = self.DT_experts_disjoint        
+        gating = self._gating_softmax(X_gate, self.all_theta_gating[iteration])
+        selected_gates = np.argmax(gating, axis=1)
+
+        predictions = [DTs[tree_index].predict(X) for tree_index in range(0, len(DTs))]
+        predictions_gate_selected = np.array([predictions[gate][index] for index, gate in enumerate(selected_gates)]).astype("int")
+        return self._map_y(predictions_gate_selected)
+
+    def predict_internal(self, iteration, return_complete=False):
+        if self.use_2_dim_gate_based_on is not None:  # 2D gating function
+            X_gate = self._transform_X_into_2_dim_for_prediction(self.X, method=self.use_2_dim_gate_based_on)
+        else:
+            X_gate = self.X
+
+        DTs = self.all_DTs[iteration]
+        gating = self._gating_softmax(X_gate, self.all_theta_gating[iteration])
+        selected_gates = np.argmax(gating, axis=1)
+
+        predictions = [DTs[tree_index].predict(self.X) for tree_index in range(0, len(DTs))]
+        if return_complete:
+            return np.array(predictions)
+        else:
+            return np.array([predictions[gate][index] for index, gate in enumerate(selected_gates)]).astype("int")
+
+    def predict_with_expert(self, X, expert, iteration="best"):
+        if iteration == "best":
+            iteration = self.best_iteration
+        X = self._preprocess_X(X)
+        DTs = self.all_DTs[iteration]
+        return DTs[expert].predict(X)
+
+    def get_expert(self, X_gate, iteration="best", internal=False):
+        if iteration == "best":
+            iteration = self.best_iteration        
+        if not internal:
+            X_gate = self._preprocess_X(X_gate)
+            if self.use_2_dim_gate_based_on is not None:
+                X_gate = self._transform_X_into_2_dim_for_prediction(X_gate, method=self.use_2_dim_gate_based_on)
+
+        gating = self._gating_softmax(X_gate, self.all_theta_gating[iteration])
+        return np.argmax(gating, axis=1)
+
+    def _reapply_feature_encoding(self, X):
+
+        X = pd.get_dummies(X, columns=list(X.select_dtypes(include=['object', 'category']).columns))
+        unseen_features_of_prediction_input = np.setdiff1d(X.columns, self.feature_names_one_hot)
+        missing_features_of_prediction_input = np.setdiff1d(self.feature_names_one_hot, X.columns)
+
+        if unseen_features_of_prediction_input.size > 0:
+            X = X.drop(columns=unseen_features_of_prediction_input, axis=1)
+        if missing_features_of_prediction_input.size > 0:
+            X[missing_features_of_prediction_input] = 0
+
+        return np.array(X)  
+
+    def _map_y(self, y_prediction, reverse=False):
+        # if reverse:  # Unseen value is outputted as is # TODO: Remove?
+        #     y_map = {v: k for k, v in self.y_map.items()}
+        #     return np.array([(y_map[y] if y in y_map else y) for y in y_prediction])
+
+        return np.array([self.y_map[y] for y in y_prediction])             
 
     def score(self, X , y):
         """Calculate prediction accuracy on a possibly new dataset."""
@@ -779,27 +791,6 @@ class MoDT():
             print(black_box_algorithm, "accuracy:", clf.score(self.X, self.y))
 
         return labels
-
-    def _likelihood(self):
-        """
-        Negative likelihood function / loss.
-        Formula taken from: https://ieeexplore.ieee.org/stamp/stamp.jsp?tp=&arnumber=6215056 (Twenty Years of Mixture of Experts).
-        """
-
-        g = self.gating_values
-        h, predictions_experts  = self._posterior_probabilties(return_predictions=True)
-        loss = - np.sum(np.sum(h * (np.log(g + 1e-05) + np.log(predictions_experts + 1e-05)), axis=1))
-        return loss
-
-        # if hard_loss:
-        #     g_argmax = np.argmax(g, axis=1)
-        #     g_hard = np.zeros((g.shape[0],g.shape[1]))
-            
-        #     for idx in range(g_hard.shape[0]):
-        #         g_hard[idx, g_argmax[idx]] = 1
-
-        #     loss_h = - np.sum(np.sum(h * (np.log(g_hard + 1e-05) + np.log(predictions_experts + 1e-05)), axis=1))
-        #     return loss, loss_h
 
     @staticmethod
     def argmax_last(list):
