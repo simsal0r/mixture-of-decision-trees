@@ -277,9 +277,13 @@ class MoDT():
             loadings = pd.DataFrame(pca.components_.T * np.sqrt(pca.explained_variance_))
 
             #  Features with the hightest correlation in the first two components
-            mask = [loadings[0].sort_values(ascending=False).index[0]]
-            mask.append(loadings[1].sort_values(ascending=False).index[0])
-            mask.append(-1)  # Add bias (last) column
+            idx_feature1 = loadings[0].sort_values(ascending=False).index[0]
+            idx_feature2 = loadings[1].sort_values(ascending=False).index[0]
+
+            if idx_feature1 == idx_feature2:
+                idx_feature2 = loadings[0].sort_values(ascending=False).index[1]
+
+            mask = [idx_feature1, idx_feature2, -1] # Add bias (last) column
             return mask
         else:
             raise ValueError("Invalid method for feature importance.")
@@ -377,23 +381,28 @@ class MoDT():
             print("Duration initialization:", self.duration_initialization)
 
         return initialized_theta
+
+    def _reapply_feature_encoding(self, X):
+
+        X = pd.get_dummies(X, columns=list(X.select_dtypes(include=['object', 'category']).columns))
+        unseen_features_of_prediction_input = np.setdiff1d(X.columns, self.feature_names_one_hot)
+        missing_features_of_prediction_input = np.setdiff1d(self.feature_names_one_hot, X.columns)
+
+        if unseen_features_of_prediction_input.size > 0:
+            X = X.drop(columns=unseen_features_of_prediction_input, axis=1)
+        if missing_features_of_prediction_input.size > 0:
+            X[missing_features_of_prediction_input] = 0
+
+        return np.array(X)  
  
     def predict(self, X):
         iteration = self.best_iteration
 
         if self.X_contains_categorical:
-            X = pd.get_dummies(X, columns=list(X.select_dtypes(include=['object', 'category']).columns))
-            unseen_features_of_prediction_input = np.setdiff1d(X.columns, self.feature_names_one_hot)
-            missing_features_of_prediction_input = np.setdiff1d(self.feature_names_one_hot, X.columns)
-            if unseen_features_of_prediction_input.size > 0:
-                X = X.drop(columns=unseen_features_of_prediction_input, axis=1)
-            if missing_features_of_prediction_input.size > 0:
-                X[missing_features_of_prediction_input] = 0
-
-            X = np.array(X)      
-        
-        X_gate = self._preprocess_X(X)
-        if self.use_2_dim_gate_based_on is not None:  # feature importance or PCA
+            X = self._reapply_feature_encoding(X)
+           
+        X_gate = self._preprocess_X(X)        
+        if self.use_2_dim_gate_based_on is not None:  # 2D gating function
             X_gate = self._transform_X_into_2_dim_for_prediction(X_gate, method=self.use_2_dim_gate_based_on)
 
         DTs = self.DT_experts_disjoint        
@@ -405,7 +414,7 @@ class MoDT():
         return self._map_y(predictions_gate_selected)
 
     def predict_internal(self, iteration, return_complete=False):
-        if self.use_2_dim_gate_based_on is not None:  # feature importance or PCA
+        if self.use_2_dim_gate_based_on is not None:  # 2D gating function
             X_gate = self._transform_X_into_2_dim_for_prediction(self.X, method=self.use_2_dim_gate_based_on)
         else:
             X_gate = self.X
@@ -696,13 +705,13 @@ class MoDT():
             raise ValueError("X and y have different lengths.")
 
         predicted_labels = self.predict(X)
-        accuracy = (np.count_nonzero(np.array(predicted_labels).flatten() == np.array(y).flatten()) / len(X))
+        accuracy = (np.count_nonzero(predicted_labels == np.array(y).flatten()) / len(X))
         return accuracy
 
     def score_internal(self, iteration):
-        """Calculate prediction accuracy on the training data."""
+        """Calculate prediction accuracy on the training data for specific iteration."""
         predicted_labels = self.predict_internal(iteration)
-        accuracy = (np.count_nonzero(predicted_labels.astype(int) == self.y.astype(int)) / self.n_input)
+        accuracy = (np.count_nonzero(predicted_labels == self.y) / self.n_input)
         return accuracy
 
     def score_internal_disjoint(self):
