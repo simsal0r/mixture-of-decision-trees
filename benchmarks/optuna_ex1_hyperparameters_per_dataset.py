@@ -23,7 +23,7 @@ from sklearn.model_selection import RepeatedKFold
 #  -> benchmark_ex1_best_hyperparameters.py
 #  -> analysis_ex1_hyperparameters_best.ipynb
 
-storage_name = "sqlite:///optuna_databases/optuna_ex1_parameter_tuning_2D_e3_d2.sqlite3"  #CHANGE
+storage_name = "sqlite:///optuna_databases/optuna_ex1_parameter_tuning_FG_e3_d2.sqlite3"  #CHANGE
 
 datasets = [
     ["abalone_input.pd","abalone_target.pd"], 
@@ -67,16 +67,16 @@ distributions = {
     "learning_rate_decay": optuna.distributions.UniformDistribution(0.975,1),
     "n_experts": optuna.distributions.IntUniformDistribution(3, 3),
     "max_depth": optuna.distributions.IntUniformDistribution(2, 2),
-    #"use_2_dim_gate_based_on": optuna.distributions.CategoricalDistribution([None]), #CHANGE
-    "use_2_dim_clustering": optuna.distributions.CategoricalDistribution([True]), # Set to True for 2D  #CHANGE
-    "use_2_dim_gate_based_on": optuna.distributions.CategoricalDistribution(["feature_importance",  #CHANGE
-                                                                             "feature_importance_lda", 
-                                                                             "feature_importance_lda_max",
-                                                                             "feature_importance_lr",  
-                                                                             "feature_importance_lr_max",  
-                                                                             "feature_importance_pca_loadings",
-                                                                             "feature_importance_xgb",
-                                                                             "PCA"]),
+    "use_2_dim_gate_based_on": optuna.distributions.CategoricalDistribution([None]), #CHANGE
+    "use_2_dim_clustering": optuna.distributions.CategoricalDistribution([False]), # Set to True for 2D  #CHANGE
+    # "use_2_dim_gate_based_on": optuna.distributions.CategoricalDistribution(["feature_importance",  #CHANGE
+    #                                                                          "feature_importance_lda", 
+    #                                                                          "feature_importance_lda_max",
+    #                                                                          "feature_importance_lr",  
+    #                                                                          "feature_importance_lr_max",  
+    #                                                                          "feature_importance_pca_loadings",
+    #                                                                          "feature_importance_xgb",
+    #                                                                          "PCA"]),
 
     "optimization_method": optuna.distributions.CategoricalDistribution(["least_squares_linear_regression","ridge_regression","lasso_regression"]),
 

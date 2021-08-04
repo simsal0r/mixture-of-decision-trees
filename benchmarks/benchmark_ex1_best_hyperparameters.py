@@ -40,8 +40,8 @@ parameters_fit = {
     "early_stopping": False,
     }
 
-#df = pd.read_pickle("dataframes/ex1_df_top10_hyperparameters_per_dataset_FD_e3_d2.pd")
-df = pd.read_pickle("dataframes/ex1_df_top10_hyperparameters_per_dataset_2D_e3_d2.pd") #CHANGE
+df = pd.read_pickle("dataframes/ex1_df_top10_hyperparameters_per_dataset_FG_e3_d2.pd")
+#df = pd.read_pickle("dataframes/ex1_df_top10_hyperparameters_per_dataset_2D_e3_d2.pd") #CHANGE
 datasets = np.unique(df["Data X"])
 repeats = 5 # For each found hyperparameter
 
@@ -141,7 +141,7 @@ for dataset in datasets:
     results_row.append(row)
 
 df_results = pd.DataFrame(results_row)
-pickle.dump(df_results, open("dataframes/ex1_df_runs_with_hyperparameters_per_dataset_2D_e3_d2.pd", "wb")) #CHANGE
+pickle.dump(df_results, open("dataframes/ex1_df_runs_with_hyperparameters_per_dataset_FG_e3_d2.pd", "wb")) #CHANGE
 print("Duration", timer() - start)
 
     
