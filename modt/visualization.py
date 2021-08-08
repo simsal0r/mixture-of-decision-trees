@@ -2,6 +2,15 @@ import matplotlib.pyplot as plt
 import numpy as np
 from sklearn import tree
 
+# Colors of the regions. Need to be visible below the scatter points.
+COLOR_SCHEMA = ["#E24A33",
+                "#8EBA42",    
+                "#81D0DB",
+                "#FBC15E",
+                "#B97357",
+                "#988ED5",
+                "#348ABD",]   
+
 def rand_jitter(arr):
     """Add small amount of noise to array."""
     stdev = .005 * (max(arr) - min(arr))
@@ -9,20 +18,15 @@ def rand_jitter(arr):
 
 def plot_gating(modt,
                 iteration,
-                ax=None,
+                point_size=4,
                 title=True, 
                 axis_digits=False,
                 axis_ticks=True,
                 jitter=False,
                 inverse_transform_standardization=False):
 
-    point_size = 10 
-    color_schema = ["#E24A33",
-                    "#8EBA42",    
-                    "#81D0DB",
-                    "#FBC15E",
-                    "#B97357",
-                    "#988ED5",]              
+    # Colors of the regions. Need to be visible below the scatter points.
+    color_schema = COLOR_SCHEMA              
     
     #plt.figure(figsize=(3,2))
     ax = plt.gca()
@@ -89,7 +93,7 @@ def plot_gating(modt,
     else:
         Z = modt.get_expert(grid, iteration, internal=False).reshape(xx.shape)
 
-    # Create a contour plot with the results Z
+    # Create a contour plot with the results Z -> regions
     n_classes = len(np.unique(Z))
     ax.contourf(xx, yy, Z, alpha=0.6,
                            levels=np.arange(n_classes + 1) - 0.5,
@@ -98,6 +102,39 @@ def plot_gating(modt,
     
     if title:
         plt.title("iteration: {}".format(iteration))
+
+def plot_initialization(modt,
+                        point_size=4,
+                        true_labels=False,
+                        jitter=False): 
+    
+    #plt.figure(figsize=(3,2))
+    ax = plt.gca()
+
+    if true_labels:
+        y = modt.y
+    elif modt.init_labels is not None:
+        y = modt.init_labels
+    else:
+        y = np.zeros(modt.y.shape[0])
+
+    if modt.use_2_dim_gate_based_on is not None:
+        X = modt.X_2_dim
+    else:
+        X = modt.X_original
+        if X.shape[1] != 2:
+            raise ValueError("X must have 2 dimensions for visualization. Use 2D gate if dataset has more dimensions.")
+
+    if jitter:
+        ax.scatter(rand_jitter(X[:, 0]), rand_jitter(X[:, 1]), c=y, s=point_size, 
+                        clim=(y.min(), y.max()))
+    else:
+        ax.scatter(X[:, 0], X[:, 1], c=y, s=point_size, clim=(y.min(), y.max()))                              
+        
+    ax.axis('tight')
+    ax.set_yticklabels([])
+    ax.set_xticklabels([])
+
         
 
 
@@ -202,11 +239,24 @@ def visualize_decision_area(predictor, X, y, enable_scatter=True, axis_digits=Fa
     ax.set(xlim=xlim, ylim=ylim)
     #plt.show()
 
+def plot_initialization_gates(modt, point_size=3):
+    plt.subplot(1, 2, 1)
+    plot_initialization(modt,point_size=point_size)
+    plt.subplot(1, 2, 2)
+    plot_gating(modt,iteration=0,point_size=point_size,title=False,axis_digits=False,inverse_transform_standardization=False)
+    # plt.subplot(1, 3, 3)
+    # plot_gating(modt,iteration=modt.best_iteration,title=False,axis_digits=False,inverse_transform_standardization=False)
+
+
+def plot_training(modt):
+    plt.subplot(1, 3, 1)
+    accuracy_line(modt)
+    plt.subplot(1, 3, 2)
+    plt.plot(modt.all_likelihood)
+    plt.subplot(1, 3, 3)
+    theta_development(modt)    
 
 def accuracy_line(modt, color="#348ABD"):
-    # accuracy = []
-    # for iteration in range(0,modt.iterations):
-    #     accuracy.append(modt.accuracy_score(iteration))
     accuracy = modt.all_accuracies
     print("Min: ", min(accuracy), "Max: ", max(accuracy))
     plt.plot(accuracy, c=color)

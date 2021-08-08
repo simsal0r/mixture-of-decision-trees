@@ -8,6 +8,7 @@ from sklearn.mixture import BayesianGaussianMixture
 from sklearn.ensemble import AdaBoostClassifier
 from sklearn.discriminant_analysis import LinearDiscriminantAnalysis
 from sklearn.linear_model import LinearRegression
+from sklearn.linear_model import LogisticRegression
 from sklearn.utils.multiclass import unique_labels
 
 
@@ -33,15 +34,15 @@ def _random_initialization_fallback(self_modt, shape):
     return np.random.rand(shape[0], shape[1])
 
 def _theta_calculation_lr(self_modt,X,y):
-    if np.sum(np.in1d(y, np.arange(0,len(np.unique(y)))) == False) > 0:
-        if self_modt.verbose:
-            print("Initialization label names contain gaps, factorizing using pandas...")
-        y = pd.factorize(y)[0]
-    expert_target_matrix = np.zeros((self_modt.n_input,self_modt.n_experts))
-    expert_target_matrix[np.arange(0,self_modt.n_input),y[np.arange(0,self_modt.n_input)]] = 1
-    lr = LinearRegression(fit_intercept=False).fit(X,expert_target_matrix)
+    # if np.sum(np.in1d(y, np.arange(0,len(np.unique(y)))) == False) > 0:
+    #     if self_modt.verbose:
+    #         print("Initialization label names contain gaps, factorizing using pandas...")
+    #     y = pd.factorize(y)[0]
+    # expert_target_matrix = np.zeros((self_modt.n_input,self_modt.n_experts))
+    # expert_target_matrix[np.arange(0,self_modt.n_input),y[np.arange(0,self_modt.n_input)]] = 1
+    lr = LogisticRegression(fit_intercept=False, solver='liblinear').fit(X,y) 
     if self_modt.verbose:
-        print("Initialization LR score:", lr.score(X, expert_target_matrix))
+        print("Initialization LR score:", lr.score(X, y))
 
     theta = lr.coef_.T
     desired_shape = _get_desired_theta_dimensions(self_modt)
@@ -99,7 +100,7 @@ class Kmeans_init():
     
 class KDTmeans_init():
 
-    def __init__(self,alpha=1,beta=0.05,gamma=0.1,theta_fittig_method="lda"):
+    def __init__(self,alpha=3,beta=0.001,gamma=0.1,theta_fittig_method="lda"):
         self.theta_fittig_method = theta_fittig_method
         self.alpha = alpha
         self.beta = beta
@@ -160,8 +161,10 @@ class KDTmeans_init():
                 break
             else:
                 cluster_centers = new_centers
+
+            self_modt.init_labels = cluster_labels
         
-        return _fit_theta(self_modt, X_gate, labels, self.theta_fittig_method)
+        return _fit_theta(self_modt, X_gate, cluster_labels, self.theta_fittig_method)
 
 class DBSCAN_init():
 
