@@ -1,4 +1,5 @@
 import matplotlib.pyplot as plt
+from matplotlib.lines import Line2D
 import numpy as np
 from sklearn import tree
 
@@ -9,7 +10,11 @@ COLOR_SCHEMA = ["#E24A33",
                 "#FBC15E",
                 "#B97357",
                 "#988ED5",
-                "#348ABD",]   
+                "#348ABD",]  
+
+def color_coder(x):  
+    idx = x % len(COLOR_SCHEMA)
+    return COLOR_SCHEMA[idx]
 
 def rand_jitter(arr):
     """Add small amount of noise to array."""
@@ -24,7 +29,8 @@ def plot_gating(modt,
                 axis_digits=False,
                 axis_ticks=True,
                 jitter=False,
-                inverse_transform_standardization=False):
+                inverse_transform_standardization=False,
+                legend=False):
 
     # Colors of the regions. Need to be visible below the scatter points.
     color_schema = COLOR_SCHEMA              
@@ -100,7 +106,13 @@ def plot_gating(modt,
                            levels=np.arange(n_classes + 1) - 0.5,
                            colors=color_schema,
                            zorder=1)
-    
+
+    if legend:
+        legend_elements = []
+        for region in np.unique(Z):
+            legend_elements.append(Line2D([], [], color=color_coder(region), marker='$\\blacksquare$', linestyle='None', markersize=12, label="DT {}".format(str(region))))
+        ax.legend(handles=legend_elements, bbox_to_anchor=(1, 1.02), loc="upper left")
+                  
     if title:
         plt.title("iteration: {}".format(iteration))
 
@@ -273,17 +285,21 @@ def plot_dt(modt, expert, size=(15,10), iteration="best",feature_names=None,clas
     dt = modt.all_DTs[iteration][expert]
     tree.plot_tree(dt, feature_names=feature_names, class_names=class_names, filled=True, rounded = True)
 
-def plot_disjoint_dt(modt, expert, tree_algorithm="sklearn", size=(15,10), feature_names=None, class_names=None):
+def plot_disjoint_dt(modt, expert, asymmetric=False, size=(15,10), feature_names=None, class_names=None):
 
-    if tree_algorithm == "sklearn":
-        plt.figure(figsize=size)
-        try:  # Plotting fails if filled=True and tree empty
-            tree.plot_tree(modt.DT_experts_disjoint[expert], feature_names=feature_names, class_names=class_names, filled=True, rounded=True)
-        except: 
-            tree.plot_tree(modt.DT_experts_disjoint[expert])
+    if feature_names is None:
+        feature_names = modt.feature_names
+    if class_names is None:
+        class_names = modt.class_names
 
-    elif tree_algorithm == "optimal_trees":
-        for dt_tree in modt.DT_experts_disjoint:
-            dt_tree.get_learner()
+    if asymmetric:
+        DT = modt.DT_experts_alternative_algorithm[expert]
     else:
-        raise Exception("")
+        DT = modt.DT_experts_disjoint[expert]
+
+    plt.figure(figsize=size)
+    try:  # Plotting fails if filled=True and tree empty
+        tree.plot_tree(DT, feature_names=feature_names, class_names=class_names, filled=True, rounded=True)
+    except: 
+        tree.plot_tree(DT)
+
