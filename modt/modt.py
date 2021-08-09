@@ -719,9 +719,13 @@ class MoDT():
         return np.array(X)  
 
     def _map_y(self, y_prediction, reverse=False):
-        # if reverse:  # Unseen value is outputted as is # TODO: Remove?
-        #     y_map = {v: k for k, v in self.y_map.items()}
-        #     return np.array([(y_map[y] if y in y_map else y) for y in y_prediction])
+        """
+        Turn a factorized class (i.e. a number) into the original class name.
+        Reverse: class name -> number
+        """
+        if reverse:  # Unseen value is outputted as is 
+            y_map = {v: k for k, v in self.y_map.items()} # Reverse map
+            return np.array([(y_map[y] if y in y_map else y) for y in y_prediction])
 
         return np.array([self.y_map[y] for y in y_prediction])             
 

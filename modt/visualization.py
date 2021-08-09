@@ -4,17 +4,39 @@ import numpy as np
 from sklearn import tree
 
 # Colors of the regions. Need to be visible below the scatter points.
-COLOR_SCHEMA = ["#E24A33",
-                "#8EBA42",    
-                "#81D0DB",
-                "#FBC15E",
-                "#B97357",
-                "#988ED5",
-                "#348ABD",]  
+COLOR_SCHEMA_REGIONS = ["#E24A33",
+                        "#8EBA42",    
+                        "#81D0DB",
+                        "#FBC15E",
+                        "#B97357",
+                        "#988ED5",
+                        "#348ABD",
+                        "#808a89",]  
+
+COLOR_SCHEMA_SCATTER = ["#440154", # dark purple
+                        "#21918c", # blue green
+                        "#fde725", # neon yellow
+                        "#5ec962", # green
+                        "#ffbaab", # pastel
+                        "#ff0000", # red
+                        "#f7f7f7", # white grey
+                        "#f700ff", # pink
+                        "#4dff00", # ugly green
+                        "#000000", # black
+                        "#3b528b", # blue
+                        "#276921", # dark green
+                        "#87ffdf", # turquoise
+                        "#016685", # dark blue
+                        "#313985", # dark purple blue
+                        ]                      
 
 def color_coder(x):  
-    idx = x % len(COLOR_SCHEMA)
-    return COLOR_SCHEMA[idx]
+    idx = x % len(COLOR_SCHEMA_REGIONS)
+    return COLOR_SCHEMA_REGIONS[idx]
+
+def color_coder_scatter(x):  
+    idx = x % len(COLOR_SCHEMA_SCATTER)
+    return COLOR_SCHEMA_SCATTER[idx]
 
 def rand_jitter(arr):
     """Add small amount of noise to array."""
@@ -31,10 +53,7 @@ def plot_gating(modt,
                 jitter=False,
                 inverse_transform_standardization=False,
                 legend=False):
-
-    # Colors of the regions. Need to be visible below the scatter points.
-    color_schema = COLOR_SCHEMA              
-    
+            
     #plt.figure(figsize=(3,2))
     ax = plt.gca()
     y = modt.y
@@ -47,10 +66,9 @@ def plot_gating(modt,
             raise ValueError("X must have 2 dimensions for visualization. Use 2D gate if dataset has more dimensions.")
 
     if jitter:
-        ax.scatter(rand_jitter(X[:, 0]), rand_jitter(X[:, 1]), c=y, s=point_size, 
-                        clim=(y.min(), y.max()), zorder=3, rasterized=rasterize)
+        ax.scatter(rand_jitter(X[:, 0]), rand_jitter(X[:, 1]), color=list(map(color_coder_scatter, y)), s=point_size, clim=(y.min(), y.max()), zorder=3, rasterized=rasterize)
     else:
-        ax.scatter(X[:, 0], X[:, 1], c=y, s=point_size, clim=(y.min(), y.max()), zorder=3, rasterized=rasterize)                              
+        ax.scatter(X[:, 0], X[:, 1], color=list(map(color_coder_scatter, y)), s=point_size, clim=(y.min(), y.max()), zorder=3, rasterized=rasterize)                              
         
     ax.axis('tight')
     if not axis_ticks:
@@ -104,7 +122,7 @@ def plot_gating(modt,
     n_classes = len(np.unique(Z))
     ax.contourf(xx, yy, Z, alpha=0.6,
                            levels=np.arange(n_classes + 1) - 0.5,
-                           colors=color_schema,
+                           colors=COLOR_SCHEMA_REGIONS,
                            zorder=1)
 
     if legend:
