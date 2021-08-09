@@ -542,6 +542,20 @@ class MoDT():
 
         # Alternative algorithms
 
+        elif tree_algorithm == "sklearn_asymmetric":
+            if self.X_contains_categorical:
+                X, _ = self._one_hot_encode(self.X_original_pd)
+            else:
+                X = self.X_original
+
+            max_leaf_nodes = int((2**(self.max_depth + 1)) / 2)
+
+            for index_expert in range(0, self.n_experts):
+                DT_experts_alternative_algorithm[index_expert] = tree.DecisionTreeClassifier(max_leaf_nodes=max_leaf_nodes)
+                DT_experts_alternative_algorithm[index_expert].fit(X=X, y=self.y, sample_weight=gating_values_hard[:, index_expert])
+
+            self.DT_experts_alternative_algorithm = DT_experts_alternative_algorithm
+
         elif tree_algorithm == "optimal_trees":
 
             from interpretableai import iai  #  Commercial software
@@ -735,9 +749,9 @@ class MoDT():
         accuracy = (np.count_nonzero(predicted_labels == self.y_original) / self.n_input)
         return accuracy
 
-    def estimate_n_experts(self, range1=range(1, 7)):
+    def estimate_n_experts(self, range1=range(1, 10), verbose=True, return_array=False):
         start = timer()
-        n_components_range = range(1, 7)
+        n_components_range = range1
         lowest_bic = np.infty
         bic = []
         estimated_n_components = None
@@ -751,13 +765,16 @@ class MoDT():
 
         end = timer()
         duration = end - start
-        if self.verbose:
+        if self.verbose or verbose:
             print("Duration:", duration)
             print("N_expert tested:", range1)
-            print("BIC:", bic)
+            print("BIC:", np.around(bic,2))
             print("BIC %: ", np.around(bic / np.sum(bic), 2))
-            print("Estimated experts", estimated_n_components)
-        return estimated_n_components
+            print("Max BIC for expert:", estimated_n_components)
+        if return_array:
+            return np.around(bic / np.sum(bic), 2)
+        else:
+            return estimated_n_components
 
     def _transform_y_with_surrogate_model(self, black_box_algorithm):
         from sklearn.neural_network import MLPClassifier
