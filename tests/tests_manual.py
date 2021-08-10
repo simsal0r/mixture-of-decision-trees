@@ -4,12 +4,17 @@ import sys, os
 sys.path.insert(1, os.path.join(sys.path[0], ".."))
 from modt.modt import MoDT
 from modt._initialization import *
+from modt.utility import *
+from modt.visualization import *
 
 #data_input = pickle.load(open("../datasets/iris_input.pd", "rb"))
 #data_target = pickle.load(open("../datasets/iris_target.pd", "rb"))
 
-data_input = pickle.load(open("datasets/iris_input.pd", "rb"))
-data_target = pickle.load(open("datasets/iris_target.pd", "rb"))
+# data_input = pickle.load(open("datasets/iris_input.pd", "rb"))
+# data_target = pickle.load(open("datasets/iris_target.pd", "rb"))
+
+data_input = pickle.load(open("../datasets/generated7_input.np", "rb"))
+data_target = pickle.load(open("../datasets/generated7_target.np", "rb"))
 
 parameters = {
     "X": data_input,
@@ -40,5 +45,9 @@ modt.fit(**parameters_fit)
 #print(modt.gating_values)
 print(modt.score_internal_disjoint())
 
-modt.train_disjoint_trees(iteration=modt.best_iteration, tree_algorithm="h2o")
+visualize_decision_area(modt)
+
+#pickle_disjoint_data(modt, modt.best_iteration)
+
+#modt.train_disjoint_trees(iteration=modt.best_iteration, tree_algorithm="h2o")
 

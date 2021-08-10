@@ -1,10 +1,15 @@
 import matplotlib.pyplot as plt
 from matplotlib.lines import Line2D
+from dtreeviz.trees import *
+
 import numpy as np
+import pandas as pd
 from sklearn import tree
 
+from modt.utility import pickle_disjoint_data
+
 # Colors of the regions. Need to be visible below the scatter points.
-COLOR_SCHEMA_REGIONS = ["#E24A33",
+COLOR_SCHEME_REGIONS = ["#E24A33",
                         "#8EBA42",    
                         "#81D0DB",
                         "#FBC15E",
@@ -13,7 +18,7 @@ COLOR_SCHEMA_REGIONS = ["#E24A33",
                         "#348ABD",
                         "#808a89",]  
 
-COLOR_SCHEMA_SCATTER = ["#440154", # dark purple
+COLOR_SCHEME_SCATTER = ["#440154", # dark purple
                         "#21918c", # blue green
                         "#fde725", # neon yellow
                         "#5ec962", # green
@@ -31,12 +36,12 @@ COLOR_SCHEMA_SCATTER = ["#440154", # dark purple
                         ]                      
 
 def color_coder(x):  
-    idx = x % len(COLOR_SCHEMA_REGIONS)
-    return COLOR_SCHEMA_REGIONS[idx]
+    idx = x % len(COLOR_SCHEME_REGIONS)
+    return COLOR_SCHEME_REGIONS[idx]
 
 def color_coder_scatter(x):  
-    idx = x % len(COLOR_SCHEMA_SCATTER)
-    return COLOR_SCHEMA_SCATTER[idx]
+    idx = x % len(COLOR_SCHEME_SCATTER)
+    return COLOR_SCHEME_SCATTER[idx]
 
 def rand_jitter(arr):
     """Add small amount of noise to array."""
@@ -82,7 +87,8 @@ def plot_gating(modt,
     else:
         feature_names = modt.feature_names
     if feature_names is None:
-        print("Warning: Dataset does not include feature names.")
+        ...
+        #print("Warning: Dataset does not include feature names.")
     else:
         names_selected_features = feature_names[modt.X_top_2_mask[:-1]]
         ax.set_xlabel(names_selected_features[0], fontsize=12)        
@@ -122,7 +128,7 @@ def plot_gating(modt,
     n_classes = len(np.unique(Z))
     ax.contourf(xx, yy, Z, alpha=0.6,
                            levels=np.arange(n_classes + 1) - 0.5,
-                           colors=COLOR_SCHEMA_REGIONS,
+                           colors=COLOR_SCHEME_REGIONS,
                            zorder=1)
 
     if legend:
@@ -158,14 +164,131 @@ def plot_initialization(modt,
             raise ValueError("X must have 2 dimensions for visualization. Use 2D gate if dataset has more dimensions.")
 
     if jitter:
-        ax.scatter(rand_jitter(X[:, 0]), rand_jitter(X[:, 1]), c=y, s=point_size, 
+        ax.scatter(rand_jitter(X[:, 0]), rand_jitter(X[:, 1]), color=list(map(color_coder_scatter, y)), s=point_size, 
                         clim=(y.min(), y.max()), rasterized=rasterize)
     else:
-        ax.scatter(X[:, 0], X[:, 1], c=y, s=point_size, clim=(y.min(), y.max()), rasterized=rasterize)                              
+        ax.scatter(X[:, 0], X[:, 1], color=list(map(color_coder_scatter, y)), s=point_size, clim=(y.min(), y.max()), rasterized=rasterize)                              
         
     ax.axis('tight')
     ax.set_yticklabels([])
     ax.set_xticklabels([])
+
+def visualize_decision_area(modt,
+                point_size=4,
+                rasterize=False,
+                axis_digits=False,
+                axis_ticks=True,
+                jitter=False,
+                inverse_transform_standardization=False):
+    """
+    Plot prediction class areas in 2D.
+    Only possible for native 2D datasets.
+    """ 
+
+    iteration = modt.best_iteration
+
+    ax = plt.gca()
+    y = modt.y
+
+    X = modt.X_original
+    if X.shape[1] != 2:
+        raise ValueError("X must have 2 dimensions for decision area visualization.")
+
+    if modt.use_2_dim_gate_based_on is not None:
+        raise ValueError("Set modt.use_2_dim_gate_based_on to None.")
+
+    if jitter:
+        ax.scatter(rand_jitter(X[:, 0]), rand_jitter(X[:, 1]), color=list(map(color_coder_scatter, y)), s=point_size, clim=(y.min(), y.max()), zorder=3, rasterized=rasterize)
+    else:
+        ax.scatter(X[:, 0], X[:, 1], color=list(map(color_coder_scatter, y)), s=point_size, clim=(y.min(), y.max()), zorder=3, rasterized=rasterize)                              
+        
+    ax.axis('tight')
+    if not axis_ticks:
+        ax.axis('off')
+    xlim = ax.get_xlim()
+    ylim = ax.get_ylim() 
+    
+    # Add feature names to axis
+    if modt.feature_names_one_hot is not None:
+        feature_names = modt.feature_names_one_hot
+    else:
+        feature_names = modt.feature_names
+    if feature_names is None:
+        ...
+        #print("Warning: Dataset does not include feature names.")
+    else:
+        names_selected_features = feature_names[modt.X_top_2_mask[:-1]]
+        ax.set_xlabel(names_selected_features[0], fontsize=12)        
+        ax.set_ylabel(names_selected_features[1], fontsize=12)
+
+    # Overwrite axis ticks by reversing the standardization of the original ticks
+    if inverse_transform_standardization: 
+        mask = modt.X_top_2_mask[:-1]
+        placeholder = np.zeros((len(ax.get_xticks()),modt.X.shape[1]-1))
+        placeholder[:,mask[0]] = ax.get_xticks()
+        new_x_ticks = modt.scaler.inverse_transform(placeholder)[:,mask[0]]
+        new_x_ticks = np.around(new_x_ticks,1)
+        ax.set_xticklabels(new_x_ticks)
+        
+        placeholder = np.zeros((len(ax.get_yticks()),modt.X.shape[1]-1))
+        placeholder[:,mask[1]] = ax.get_yticks()
+        new_y_ticks = modt.scaler.inverse_transform(placeholder)[:,mask[1]]
+        new_y_ticks = np.around(new_y_ticks,1)
+        ax.set_yticklabels(new_y_ticks) 
+        
+    if not axis_digits:
+        ax.set_yticklabels([])
+        ax.set_xticklabels([])
+
+    # Create 200*200 sample points. 
+    xx, yy = np.meshgrid(np.linspace(*xlim, num=200),
+                         np.linspace(*ylim, num=200))
+    grid = np.c_[xx.ravel(), yy.ravel()]
+
+    #grid = np.append(grid, np.ones([grid.shape[0], 1]),axis=1) # Bias
+    Z = modt.predict(grid, preprocessing=True).reshape(xx.shape) #TODO: Stdz is applied here
+
+    # Create a contour plot with the results Z -> regions
+    n_classes = len(np.unique(Z))
+    ax.contourf(xx, yy, Z, alpha=0.6,
+                           levels=np.arange(n_classes + 1) - 0.5,
+                           #colors=COLOR_SCHEME_REGIONS,
+                           zorder=1)
+
+
+# def visualize_decision_area_old(predictor, X, y,rasterize=False, enable_scatter=True, axis_digits=False):
+#     """Plot prediction class areas in 2D.""" 
+
+#     if X.shape[1] != 2:
+#         raise ValueError("X must have 2 dimensions.")
+
+#     ax = plt.gca()
+    
+#     # Plot the training points
+#     if enable_scatter:
+#         ax.scatter(X[:, 0], X[:, 1], c=y, s=1,
+#                 clim=(y.min(), y.max()), zorder=3, rasterized=rasterize)
+#     else:
+#         ax.scatter(X[:, 0], X[:, 1], c=y, s=1, alpha=0,
+#                 clim=(y.min(), y.max()), zorder=3, rasterized=rasterize)         
+#     ax.axis('tight')
+#     if not axis_digits:
+#         ax.axis('off')
+#     xlim = ax.get_xlim()
+#     ylim = ax.get_ylim()
+    
+#     xx, yy = np.meshgrid(np.linspace(*xlim, num=200),
+#                          np.linspace(*ylim, num=200))
+#     Z = predictor(np.c_[xx.ravel(), yy.ravel()]).reshape(xx.shape)
+
+#     # Create a color plot with the results
+#     n_classes = len(np.unique(y))
+#     contours = ax.contourf(xx, yy, Z, alpha=0.3,
+#                            levels=np.arange(n_classes + 1) - 0.5,
+#                            zorder=1)
+
+#     ax.set(xlim=xlim, ylim=ylim)
+#     #plt.show()        
 
 # def visualize_gating(modt,
 #                      iteration,
@@ -234,39 +357,7 @@ def plot_initialization(modt,
 #     #return plt
 #     #plt.show()
 
-def visualize_decision_area(predictor, X, y,rasterize=False, enable_scatter=True, axis_digits=False):
-    """Plot prediction class areas in 2D.""" 
 
-    if X.shape[1] != 2:
-        raise ValueError("X must have 2 dimensions.")
-
-    ax = plt.gca()
-    
-    # Plot the training points
-    if enable_scatter:
-        ax.scatter(X[:, 0], X[:, 1], c=y, s=1,
-                clim=(y.min(), y.max()), zorder=3, rasterized=rasterize)
-    else:
-        ax.scatter(X[:, 0], X[:, 1], c=y, s=1, alpha=0,
-                clim=(y.min(), y.max()), zorder=3, rasterized=rasterize)         
-    ax.axis('tight')
-    if not axis_digits:
-        ax.axis('off')
-    xlim = ax.get_xlim()
-    ylim = ax.get_ylim()
-    
-    xx, yy = np.meshgrid(np.linspace(*xlim, num=200),
-                         np.linspace(*ylim, num=200))
-    Z = predictor(np.c_[xx.ravel(), yy.ravel()]).reshape(xx.shape)
-
-    # Create a color plot with the results
-    n_classes = len(np.unique(y))
-    contours = ax.contourf(xx, yy, Z, alpha=0.3,
-                           levels=np.arange(n_classes + 1) - 0.5,
-                           zorder=1)
-
-    ax.set(xlim=xlim, ylim=ylim)
-    #plt.show()
 
 def plot_initialization_gates(modt, point_size=3, rasterize=False):
     plt.subplot(1, 2, 1)
@@ -320,4 +411,81 @@ def plot_disjoint_dt(modt, expert, asymmetric=False, size=(15,10), feature_names
         tree.plot_tree(DT, feature_names=feature_names, class_names=class_names, filled=True, rounded=True)
     except: 
         tree.plot_tree(DT)
+
+def plot_dt_dtreeviz(modt, expert, colors="pretty", fancy="True", asymmetric=False):
+    """DT plotting using dtreeviz"""
+
+    colors_pretty = {'classes': [
+        None, # 0 classes
+        None, # 1 class
+        ["#E24A33","#8EBA42"],
+        ["#E24A33","#8EBA42","#81D0DB"],
+        ["#E24A33","#8EBA42","#81D0DB","#FBC15E"],
+        ["#E24A33","#8EBA42","#81D0DB","#FBC15E","#B97357"],
+        ["#E24A33","#8EBA42","#81D0DB","#FBC15E","#B97357","#988ED5"],
+        ["#E24A33","#8EBA42","#81D0DB","#FBC15E","#B97357","#988ED5","#348ABD"],
+        ["#FEFEBB",'#edf8b1','#c7e9b4','#7fcdbb','#1d91c0','#225ea8','#fdae61','#f46d43'], # 8
+        ["#FEFEBB",'#c7e9b4','#41b6c4','#74add1','#4575b4','#313695','#fee090','#fdae61','#f46d43'], # 9
+        ["#FEFEBB",'#c7e9b4','#41b6c4','#74add1','#4575b4','#313695','#fee090','#fdae61','#f46d43','#d73027'] # 10
+        ]}
+
+    # colors that can be seen on the colored gates
+    colors_visible = {'classes':   [
+        None, # 0 classes
+        None, # 1 class
+        ["#440154", "#21918c"],
+        ["#440154", "#21918c", "#fde725"],
+        ["#440154", "#21918c", "#fde725", "#5ec962"],            
+        ["#440154", "#21918c", "#fde725", "#5ec962", "#ffbaab"],
+        ["#440154", "#21918c", "#fde725", "#5ec962", "#ffbaab", "#ff0000"],
+        ["#440154", "#21918c", "#fde725", "#5ec962", "#ffbaab", "#ff0000", "#f7f7f7"],
+        ["#440154", "#21918c", "#fde725", "#5ec962", "#ffbaab", "#ff0000", "#f7f7f7", "#f700ff"],
+        ["#440154", "#21918c", "#fde725", "#5ec962", "#ffbaab", "#ff0000", "#f7f7f7", "#f700ff", "#4dff00"],
+        ["#440154", "#21918c", "#fde725", "#5ec962", "#ffbaab", "#ff0000", "#f7f7f7", "#f700ff", "#4dff00", "#000000"]
+        ]}
+
+    if colors == "pretty":
+        color_scheme = colors_pretty
+    elif colors == "visible":
+        color_scheme = colors_visible
+    else:
+        color_scheme = {}
+
+    pickle_disjoint_data(modt, modt.best_iteration)
+
+    df = pd.read_pickle("output/disjoint_data_e_{}.pd".format(expert))
+    df["target"] = modt._map_y(df["target"],reverse=True)
+    df = df.sort_values(by="target")
+
+    if modt.class_names is None:
+        class_names = list(np.unique(modt.y_original))
+    else:
+        class_names=list(modt.class_names)
+
+    if modt.feature_names is None:
+        feature_names = ["feature" + str(x) for x in range(modt.X_original.shape[1])]
+    else:
+        feature_names = modt.feature_names
+
+    if asymmetric:
+        if modt.DT_experts_alternative_algorithm is None:
+            raise Exception("Train asymmetric trees first.")
+        else:
+            classifier = modt.DT_experts_alternative_algorithm[expert]
+    else:
+        classifier = modt.DT_experts_disjoint[expert]
+    try:
+        viz = dtreeviz(classifier, 
+                    df.iloc[:,:-1], 
+                    df["target"],
+                    feature_names=feature_names, 
+                    class_names=class_names,
+                    fancy=fancy,
+                    colors=color_scheme
+                    )                            
+        viz.view() 
+    except:
+        print("Region probably empty. Plotting failed.")
+
+
 

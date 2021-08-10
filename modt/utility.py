@@ -17,9 +17,14 @@ def pickle_disjoint_data(modt, iteration, filepathprefix=""):
     gating_values_hard = np.zeros([modt.n_input, modt.n_experts])
     gating_values_hard[np.arange(0, modt.n_input), gate] = 1
 
+    if modt.X_original_pd is not None:
+        X = modt.X_original_pd
+    else:
+        X = pd.DataFrame(modt.X_original)
+
     for index_expert in range(modt.n_experts):
         mask = gating_values_hard[:, index_expert] == 1
-        df = modt.X_original_pd[mask].copy()
+        df = X[mask].copy()
         df["target"] = modt.y_original[mask]
 
         pickle.dump(df, open(filepathprefix + "output/disjoint_data_e_{}.pd".format(index_expert), "wb"))

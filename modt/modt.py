@@ -653,15 +653,19 @@ class MoDT():
         self.all_DTs.append(self.DT_experts.copy())
         self.all_gating_values.append(self.gating_values.copy())
 
-    def predict(self, X):
+    def predict(self, X, preprocessing=True):
         iteration = self.best_iteration
 
-        if self.X_contains_categorical:
-            X = self._reapply_feature_encoding(X)
-           
-        X_gate = self._preprocess_X(X)        
-        if self.use_2_dim_gate_based_on is not None:  # 2D gating function
-            X_gate = self._transform_X_into_2_dim_for_prediction(X_gate, method=self.use_2_dim_gate_based_on)
+        if preprocessing:
+            if self.X_contains_categorical:
+                X = self._reapply_feature_encoding(X)
+            
+            X_gate = self._preprocess_X(X)        
+            if self.use_2_dim_gate_based_on is not None:  # 2D gating function
+                X_gate = self._transform_X_into_2_dim_for_prediction(X_gate, method=self.use_2_dim_gate_based_on)
+        else:
+            X_gate = X
+            X = X_gate[:,:-1]
 
         DTs = self.DT_experts_disjoint        
         gating = self._gating_softmax(X_gate, self.all_theta_gating[iteration])
