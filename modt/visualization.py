@@ -118,16 +118,17 @@ def plot_gating(modt,
                          np.linspace(*ylim, num=200))
     grid = np.c_[xx.ravel(), yy.ravel()]
 
+    
+
     if modt.use_2_dim_gate_based_on is not None:
-        grid = np.append(grid, np.ones([grid.shape[0], 1]),axis=1) # Bias
-        Z = modt.get_expert(grid, iteration, internal=True).reshape(xx.shape)
-    else:
-        Z = modt.get_expert(grid, iteration, internal=False).reshape(xx.shape)
+        grid = np.append(grid, np.ones([grid.shape[0], 1]), axis=1) # Bias
+
+    Z = modt.get_expert(grid, iteration, plotting=True).reshape(xx.shape) 
 
     # Create a contour plot with the results Z -> regions
     n_classes = len(np.unique(Z))
     ax.contourf(xx, yy, Z, alpha=0.6,
-                           levels=np.arange(n_classes + 1) - 0.5,
+                           levels=np.arange(modt.n_experts + 1) - 0.5,
                            colors=COLOR_SCHEME_REGIONS,
                            zorder=1)
 

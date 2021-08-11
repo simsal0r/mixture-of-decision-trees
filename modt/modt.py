@@ -328,7 +328,7 @@ class MoDT():
 
     def _transform_X_into_2_dim_for_prediction(self, X, method):
         if method != "PCA":
-            X = X[:, self.X_top_2_mask]
+            X = X[:, self.X_top_2_mask] # Bias included
         else:
             X = self.pca.transform(X)
             X = np.append(X, np.ones([X.shape[0], 1]), axis=1)  # Bias
@@ -698,13 +698,22 @@ class MoDT():
         DTs = self.all_DTs[iteration]
         return DTs[expert].predict(X)
 
-    def get_expert(self, X_gate, iteration="best", internal=False):
+    def get_expert(self, X_gate, iteration="best", internal=False, plotting=False):
         if iteration == "best":
-            iteration = self.best_iteration        
-        if not internal:
+            iteration = self.best_iteration
+
+        if plotting:
+            if self.use_2_dim_gate_based_on is None:
+                X_gate = self._preprocess_X(X_gate) # Std and bias
+        else:
             X_gate = self._preprocess_X(X_gate)
             if self.use_2_dim_gate_based_on is not None:
-                X_gate = self._transform_X_into_2_dim_for_prediction(X_gate, method=self.use_2_dim_gate_based_on)
+                X_gate = self._transform_X_into_2_dim_for_prediction(X_gate, method=self.use_2_dim_gate_based_on)            
+
+        # if not internal:
+        #     X_gate = self._preprocess_X(X_gate)
+        # if self.use_2_dim_gate_based_on is not None and plotting is True:
+        #     X_gate = self._transform_X_into_2_dim_for_prediction(X_gate, method=self.use_2_dim_gate_based_on)
 
         gating = self._gating_softmax(X_gate, self.all_theta_gating[iteration])
         return np.argmax(gating, axis=1)
