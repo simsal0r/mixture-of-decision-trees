@@ -416,6 +416,9 @@ def plot_disjoint_dt(modt, expert, asymmetric=False, size=(15,10), feature_names
 def plot_dt_dtreeviz(modt, expert, colors="pretty", fancy="True", asymmetric=False):
     """DT plotting using dtreeviz"""
 
+    if modt.X_contains_categorical:
+        raise Exception("Currently cannot print trees with categorical values.")
+
     colors_pretty = {'classes': [
         None, # 0 classes
         None, # 1 class
@@ -456,6 +459,7 @@ def plot_dt_dtreeviz(modt, expert, colors="pretty", fancy="True", asymmetric=Fal
 
     df = pd.read_pickle("output/disjoint_data_e_{}.pd".format(expert))
     df["target"] = modt._map_y(df["target"],reverse=True)
+
     df = df.sort_values(by="target")
 
     if modt.class_names is None:
@@ -485,8 +489,8 @@ def plot_dt_dtreeviz(modt, expert, colors="pretty", fancy="True", asymmetric=Fal
                     colors=color_scheme
                     )                            
         viz.view() 
-    except:
-        print("Region probably empty. Plotting failed.")
+    except Exception as e: 
+        print("Plotting failed. Exception:", e)
 
 
 
