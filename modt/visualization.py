@@ -57,7 +57,8 @@ def plot_gating(modt,
                 axis_ticks=True,
                 jitter=False,
                 inverse_transform_standardization=False,
-                legend=False):
+                legend=False,
+                legend_classes=False):
             
     #plt.figure(figsize=(3,2))
     ax = plt.gca()
@@ -93,7 +94,7 @@ def plot_gating(modt,
         names_selected_features = feature_names[modt.X_top_2_mask[:-1]]
         ax.set_xlabel(names_selected_features[0], fontsize=12)        
         ax.set_ylabel(names_selected_features[1], fontsize=12)
-
+        
     # Overwrite axis ticks by reversing the standardization of the original ticks
     if inverse_transform_standardization: 
         mask = modt.X_top_2_mask[:-1]
@@ -136,8 +137,25 @@ def plot_gating(modt,
         legend_elements = []
         for region in np.unique(Z):
             legend_elements.append(Line2D([], [], color=color_coder(region), marker='$\\blacksquare$', linestyle='None', markersize=12, label="DT {}".format(str(region))))
-        ax.legend(handles=legend_elements, bbox_to_anchor=(1, 1.02), loc="upper left")
-                  
+        legend_regions = ax.legend(handles=legend_elements, bbox_to_anchor=(1, 1.02), loc="upper left")
+        ax.add_artist(legend_regions)
+        
+    # Class names
+    if modt.class_names is None:
+        class_names = list(np.unique(modt.y_original))
+    else:
+        class_names = list(modt.class_names)
+        
+    #import pdb; pdb.set_trace()
+        
+    if legend_classes:     
+        legend_elements_classes = []
+        for class0 in np.unique(modt.y):
+            legend_elements_classes.append(Line2D([], [], color=color_coder_scatter(class0), marker='o',
+                                                  linestyle='None', markersize=10, label= class_names[class0] ))
+        lengend_classes = plt.legend(handles=legend_elements_classes, bbox_to_anchor=(1, -0.02), loc="lower left")
+        ax.add_artist(lengend_classes)
+    
     if title:
         plt.title("iteration: {}".format(iteration))
 
