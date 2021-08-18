@@ -1,6 +1,5 @@
 import matplotlib.pyplot as plt
 from matplotlib.lines import Line2D
-from dtreeviz.trees import *
 
 import numpy as np
 import pandas as pd
@@ -433,6 +432,8 @@ def plot_disjoint_dt(modt, expert, asymmetric=False, size=(15,10), feature_names
 
 def plot_dt_dtreeviz(modt, expert, colors="pretty", fancy="True", asymmetric=False):
     """DT plotting using dtreeviz"""
+
+    from dtreeviz.trees import dtreeviz
 
     if modt.X_contains_categorical:
         raise Exception("Currently cannot print trees with categorical values.")

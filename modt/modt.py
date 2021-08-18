@@ -772,10 +772,11 @@ class MoDT():
         lowest_bic = np.infty
         bic = []
         estimated_n_components = None
+        X = self.X[:,:-1] # Exclude bias
         for n_components in n_components_range:
-            gmm = GaussianMixture(n_components=n_components, covariance_type="full")
-            gmm.fit(self.X)
-            bic.append(gmm.bic(self.X))
+            gmm = GaussianMixture(n_components=n_components, covariance_type="full")           
+            gmm.fit(X)
+            bic.append(gmm.bic(X))
             if bic[-1] < lowest_bic:
                 lowest_bic = bic[-1]
                 estimated_n_components = n_components
@@ -786,10 +787,11 @@ class MoDT():
             print("Duration:", duration)
             print("N_expert tested:", range1)
             print("BIC:", np.around(bic,2))
-            print("BIC %: ", np.around(bic / np.sum(bic), 2))
-            print("Max BIC for expert:", estimated_n_components)
+            print("BIC %: ", np.around(np.abs(bic) / np.sum(np.abs(bic)), 2))
+            print("Min BIC with components:", estimated_n_components)
         if return_array:
-            return np.around(bic / np.sum(bic), 2)
+            return bic
+            #return np.around(bic / np.sum(bic), 2)
         else:
             return estimated_n_components
 
