@@ -10,9 +10,8 @@ from timeit import default_timer as timer
 
 import numpy as np
 import pandas as pd
-from sklearn import tree
-from sklearn.preprocessing import normalize
-from sklearn.model_selection import RepeatedKFold
+from sklearn.utils import shuffle
+from sklearn.model_selection import train_test_split
 
 #     optuna_ex1_hyperparameters_per_dataset.py
 #  -> analysis_ex1_hyperparameters.ipynb
@@ -40,57 +39,48 @@ parameters_fit = {
     "early_stopping": False,
     }
 
-df = pd.read_pickle("dataframes/ex1_df_top10_hyperparameters_per_dataset_FG_e3_d2.pd")
-#df = pd.read_pickle("dataframes/ex1_df_top10_hyperparameters_per_dataset_2D_e3_d2.pd") #CHANGE
-datasets = np.unique(df["Data X"])
-repeats = 5 # For each found hyperparameter
+repeats = 1 # For each found hyperparameter
+SETUP = "2D"  # "FG" or "2D"    
 
-def k_fold(parameters,parameters_fit,n_repeats):
+df = pd.read_pickle("dataframes/ex1_df_top10_hyperparameters_per_dataset_{}_e3_d2.pd".format(SETUP))
+datasets = np.unique(df["Data X"])
+
+def run_modt(parameters,parameters_fit,n_repeats):
 
     parameters = parameters
     parameters_fit = parameters_fit
-    data_input = pickle.load(open("../datasets/" + parameters["X"], "rb"))
-    data_target = pickle.load(open("../datasets/" + parameters["y"], "rb"))    
 
-    use_dataframe = False
-    if isinstance(data_input, pd.core.frame.DataFrame):
-        use_dataframe = True
+    data_complete_input = pickle.load(open("../datasets/" + parameters["X"], "rb"))
+    data_complete_target = pickle.load(open("../datasets/" + parameters["y"], "rb"))    
+
+    shuffled_X, shuffled_y = shuffle(data_complete_input,data_complete_target, random_state=7)
+    data_input_train, data_input_test, data_target_train, data_target_test = train_test_split(shuffled_X, shuffled_y, test_size=0.25, random_state=7)
+
+    if isinstance(data_input_train, pd.core.frame.DataFrame):
+        data_input_train.reset_index(inplace=True, drop=True)
+        data_input_test.reset_index(inplace=True, drop=True)        
+        data_target_train.reset_index(inplace=True, drop=True)
+        data_target_test.reset_index(inplace=True, drop=True)
+
+    parameters["X"] = data_input_train
+    parameters["y"] = data_target_train
 
     accuracies_training = []
     accuracies_validation = []   
-    rkf = RepeatedKFold(n_splits=4, n_repeats=n_repeats)
-    for train_idx, val_idx in rkf.split(data_input):
+
+    for _ in range(n_repeats):
         
-        if use_dataframe:
-            X_temp = data_input.iloc[train_idx].reset_index(inplace=False, drop=True)
-            y_temp = data_target.iloc[train_idx].reset_index(inplace=False, drop=True)
-        else:
-            X_temp = data_input[train_idx]
-            y_temp = data_target[train_idx]
-
-        # Insert k-fold dataset params
-        parameters["X"] = X_temp
-        parameters["y"] = y_temp
-
         modt = MoDT(**parameters)
         modt.fit(**parameters_fit)
         accuracies_training.append(modt.score_internal_disjoint())
-
-        if use_dataframe:
-            X_temp = data_input.iloc[val_idx].reset_index(inplace=False, drop=True)
-            y_temp = data_target.iloc[val_idx].reset_index(inplace=False, drop=True)
-        else:
-            X_temp = data_input[val_idx]
-            y_temp = data_target[val_idx]
-        accuracies_validation.append(modt.score(X_temp, y_temp))
+        accuracies_validation.append(modt.score(data_input_test, data_target_test))
 
     dict_results = {}
     dict_results["accuracy_train"] = accuracies_training
     dict_results["accuracy_val"] = accuracies_validation
 
     return dict_results
-    # dict_results["std_train"] = np.std(accuracies_training)
-    # dict_results["std_val"] = np.std(accuracies_validation)    
+
 
 start = timer()
 results_row = []
@@ -127,9 +117,9 @@ for dataset in datasets:
         else:
             raise ValueError("Can't interpret initialization method.")
 
-        k_fold_results = k_fold(parameters, parameters_fit, n_repeats=repeats)
-        accuracies_training.append(k_fold_results["accuracy_train"])
-        accuracies_validation.append(k_fold_results["accuracy_val"])
+        results = run_modt(parameters, parameters_fit, n_repeats=repeats)
+        accuracies_training.append(results["accuracy_train"])
+        accuracies_validation.append(results["accuracy_val"])
 
     row = {
         "dataset" : row["Data X"],
@@ -141,7 +131,7 @@ for dataset in datasets:
     results_row.append(row)
 
 df_results = pd.DataFrame(results_row)
-pickle.dump(df_results, open("dataframes/ex1_df_runs_with_hyperparameters_per_dataset_FG_e3_d2.pd", "wb")) #CHANGE
+pickle.dump(df_results, open("dataframes/ex1_df_runs_with_hyperparameters_per_dataset_{}_e3_d2.pd".format(SETUP), "wb")) 
 print("Duration", timer() - start)
 
     

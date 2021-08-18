@@ -23,18 +23,20 @@ from sklearn.model_selection import RepeatedKFold
 #  -> benchmark_ex1_best_hyperparameters.py
 #  -> analysis_ex1_hyperparameters_best.ipynb
 
-storage_name = "sqlite:///optuna_databases/optuna_ex1_parameter_tuning_FG_e3_d2.sqlite3"  #CHANGE
+SETUP = "2D"  # "FG" or "2D"
+
+storage_name = "sqlite:///optuna_databases/optuna_ex1_parameter_tuning_{}_e3_d2.sqlite3".format(SETUP)  
 
 datasets = [
     ["abalone_input.pd","abalone_target.pd"], 
-    ["adult_input.pd","adult_target.pd"], # Large
+    #["adult_input.pd","adult_target.pd"], # Large
     ["banknote_input.pd","banknote_target.pd"], # Easy
-    ["bank_input.pd","bank_target.pd"], # Large
+    #["bank_input.pd","bank_target.pd"], # Large
     ["breast_cancer_input.np","breast_cancer_target.np"],
     ["cars_input.pd","cars_target.pd"], 
     ["contraceptive_input.pd","contraceptive_target.pd"], 
     ["generated6_input.np","generated6_target.np"],
-    ["hrss_input.pd","hrss_target.pd"], # Large
+    #["hrss_input.pd","hrss_target.pd"], # Large
     ["iris_input.pd","iris_target.pd"],
     ["steel_input.pd","steel_target.pd"],
     ["students_input.pd","students_target.pd"],
@@ -63,27 +65,30 @@ parameters_fit = {
     }
 
 distributions = {
-    "init_learning_rate": optuna.distributions.UniformDistribution(1,150),
-    "learning_rate_decay": optuna.distributions.UniformDistribution(0.975,1),
+    "init_learning_rate": optuna.distributions.UniformDistribution(1,300),
+    "learning_rate_decay": optuna.distributions.UniformDistribution(0.75,1),
     "n_experts": optuna.distributions.IntUniformDistribution(3, 3),
     "max_depth": optuna.distributions.IntUniformDistribution(2, 2),
-    "use_2_dim_gate_based_on": optuna.distributions.CategoricalDistribution([None]), #CHANGE
-    "use_2_dim_clustering": optuna.distributions.CategoricalDistribution([False]), # Set to True for 2D  #CHANGE
-    # "use_2_dim_gate_based_on": optuna.distributions.CategoricalDistribution(["feature_importance",  #CHANGE
-    #                                                                          "feature_importance_lda", 
-    #                                                                          "feature_importance_lda_max",
-    #                                                                          "feature_importance_lr",  
-    #                                                                          "feature_importance_lr_max",  
-    #                                                                          "feature_importance_pca_loadings",
-    #                                                                          "feature_importance_xgb",
-    #                                                                          "PCA"]),
-
     "optimization_method": optuna.distributions.CategoricalDistribution(["least_squares_linear_regression","ridge_regression","lasso_regression"]),
-
                 }
 
+if SETUP == "2D":
+    distributions["use_2_dim_gate_based_on"] = optuna.distributions.CategoricalDistribution(["feature_importance",
+                                                                             "feature_importance_lda_max",
+                                                                             "feature_importance_lr",  
+                                                                             "feature_importance_lr_max",  
+                                                                             "feature_importance_pca_loadings",
+                                                                             "feature_importance_xgb",
+                                                                             "PCA"])
+    distributions["use_2_dim_clustering"] = optuna.distributions.CategoricalDistribution([True])                                                                         
+elif SETUP == "FG":                                                                        
+    distributions["use_2_dim_gate_based_on"] =  optuna.distributions.CategoricalDistribution([None])
+    distributions["use_2_dim_clustering"] = optuna.distributions.CategoricalDistribution([False])
+else:
+    raise ValueError("Invalid setup.")
+
 distributions_KDT_means = {
-    "alpha": optuna.distributions.UniformDistribution(0.7,4),
+    "alpha": optuna.distributions.UniformDistribution(0.5,10),
     "beta": optuna.distributions.UniformDistribution(0.001,0.5),
     "gamma": optuna.distributions.UniformDistribution(0.001,0.5),
 }
@@ -98,14 +103,17 @@ distributions_BGM = {
 initialization_methods = ["random", Kmeans_init(), KDTmeans_init(), BGM_init()]
 
 start = timer()
-n_trials = 100 # per initialization_method
+n_trials = 1 # per initialization_method
 n_startup_trials = 25 # 25 of 100 is random instead of the TPE algorithm.  
 
 for dataset in datasets:
 
     print("Starting",dataset[0],"...")
-    data_input = pickle.load(open("../datasets/" + dataset[0], "rb"))
-    data_target = pickle.load(open("../datasets/" + dataset[1], "rb"))
+    data_complete_input = pickle.load(open("../datasets/" + dataset[0], "rb"))
+    data_complete_target = pickle.load(open("../datasets/" + dataset[1], "rb"))
+
+    shuffled_X, shuffled_y = shuffle(data_complete_input,data_complete_target, random_state=7)
+    data_input, _, data_target, _ = train_test_split(shuffled_X, shuffled_y, test_size=0.25, random_state=7)
   
     for initialization_method in initialization_methods:
         
