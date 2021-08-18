@@ -53,7 +53,7 @@ def run_modt(parameters,parameters_fit,n_repeats):
     data_complete_input = pickle.load(open("../datasets/" + parameters["X"], "rb"))
     data_complete_target = pickle.load(open("../datasets/" + parameters["y"], "rb"))    
 
-    shuffled_X, shuffled_y = shuffle(data_complete_input,data_complete_target, random_state=7)
+    shuffled_X, shuffled_y = shuffle(data_complete_input, data_complete_target, random_state=7)
     data_input_train, data_input_test, data_target_train, data_target_test = train_test_split(shuffled_X, shuffled_y, test_size=0.25, random_state=7)
 
     if isinstance(data_input_train, pd.core.frame.DataFrame):
