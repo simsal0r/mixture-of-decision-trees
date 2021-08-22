@@ -23,7 +23,7 @@ from sklearn.model_selection import RepeatedKFold
 #  -> benchmark_ex1_best_hyperparameters.py
 #  -> analysis_ex1_hyperparameters_best.ipynb
 
-SETUP = "2D"  # "FG" or "2D"
+SETUP = "FG"  # "FG" or "2D"
 
 storage_name = "sqlite:///optuna_databases/optuna_ex1_parameter_tuning_{}_e3_d2.sqlite3".format(SETUP)  
 
@@ -104,7 +104,7 @@ initialization_methods = ["random", Kmeans_init(), KDTmeans_init(), BGM_init()]
 
 start = timer()
 n_trials = 500 # per initialization_method
-n_startup_trials = 50 # 25 of X is random instead of the TPE algorithm.  
+n_startup_trials = 50 # 50 of X is random instead of the TPE algorithm.  
 
 for dataset in datasets:
 
