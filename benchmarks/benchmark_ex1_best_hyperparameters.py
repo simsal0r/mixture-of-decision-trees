@@ -40,7 +40,7 @@ parameters_fit = {
     }
 
 repeats = 100 # For each found hyperparameter
-SETUP = "2D"  # "FG" or "2D"    
+SETUP = "FG"  # "FG" or "2D"    
 
 df = pd.read_pickle("dataframes/ex1_df_top10_hyperparameters_per_dataset_{}_e3_d2.pd".format(SETUP))
 datasets = np.unique(df["Data X"])
