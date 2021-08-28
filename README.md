@@ -15,7 +15,7 @@ Resulting decision trees:
 ## A more sophisticated example
 MoDT is used with the steel plates faults dataset: https://archive.ics.uci.edu/ml/datasets/Steel+Plates+Faults
 
-The visualizations are created with dtreeviz: https://github.com/parrt/dtreeviz
+The DT visualizations are created with dtreeviz: https://github.com/parrt/dtreeviz
 
 ![](examples/output/cs_steel_d2_gate.jpg?raw=true "Gating function.")
 
