@@ -1,7 +1,7 @@
 # MoDT: Mixture of Decision Trees
 An interpretable DT ensemble method based on the Mixture of Experts architecture. The implementation is inspired by a similar approach called Mixture of Expert Trees: https://arxiv.org/abs/1906.06717 .
 
-The Expectation-Maximization (EM) training algorithm iteratively optimizes a set of decison trees and associated regions:
+The Expectation-Maximization (EM) training algorithm iteratively optimizes a set of decison trees and associated regions:\
 ![](examples/output/example_gate1.gif?raw=true "Animation of the training process.")
 
 Decision area of the final gating function:\
