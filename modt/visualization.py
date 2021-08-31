@@ -144,9 +144,7 @@ def plot_gating(modt,
         class_names = list(np.unique(modt.y_original))
     else:
         class_names = list(modt.class_names)
-        
-    #import pdb; pdb.set_trace()
-        
+                
     if legend_classes:     
         legend_elements_classes = []
         for class0 in np.unique(modt.y):
@@ -272,110 +270,6 @@ def visualize_decision_area(modt,
                            levels=np.arange(n_classes + 1) - 0.5,
                            #colors=COLOR_SCHEME_REGIONS,
                            zorder=1)
-
-
-# def visualize_decision_area_old(predictor, X, y,rasterize=False, enable_scatter=True, axis_digits=False):
-#     """Plot prediction class areas in 2D.""" 
-
-#     if X.shape[1] != 2:
-#         raise ValueError("X must have 2 dimensions.")
-
-#     ax = plt.gca()
-    
-#     # Plot the training points
-#     if enable_scatter:
-#         ax.scatter(X[:, 0], X[:, 1], c=y, s=1,
-#                 clim=(y.min(), y.max()), zorder=3, rasterized=rasterize)
-#     else:
-#         ax.scatter(X[:, 0], X[:, 1], c=y, s=1, alpha=0,
-#                 clim=(y.min(), y.max()), zorder=3, rasterized=rasterize)         
-#     ax.axis('tight')
-#     if not axis_digits:
-#         ax.axis('off')
-#     xlim = ax.get_xlim()
-#     ylim = ax.get_ylim()
-    
-#     xx, yy = np.meshgrid(np.linspace(*xlim, num=200),
-#                          np.linspace(*ylim, num=200))
-#     Z = predictor(np.c_[xx.ravel(), yy.ravel()]).reshape(xx.shape)
-
-#     # Create a color plot with the results
-#     n_classes = len(np.unique(y))
-#     contours = ax.contourf(xx, yy, Z, alpha=0.3,
-#                            levels=np.arange(n_classes + 1) - 0.5,
-#                            zorder=1)
-
-#     ax.set(xlim=xlim, ylim=ylim)
-#     #plt.show()        
-
-# def visualize_gating(modt,
-#                      iteration,
-#                      ax=None,
-#                      cmap='rainbow',
-#                      enable_scatter=True,
-#                      low_alpha=False,
-#                      title=True, 
-#                      axis_digits=False,
-#                      axis_ticks=False):
-#     #plt.figure(figsize=(8,4))
-#     ax = plt.gca()
-#     y = modt.y
-
-#     if modt.use_2_dim_gate_based_on is not None:
-#         X = modt.X_2_dim
-#     else:
-#         X = modt.X_original
-#         if X.shape[1] != 2:
-#             raise ValueError("X must have 2 dimensions for visualization.")
-    
-#     # Plot the training points
-#     if enable_scatter:
-#         if low_alpha:
-#             ax.scatter(X[:, 0], X[:, 1], c=y, s=1, alpha=0.1,
-#                     clim=(y.min(), y.max()), zorder=3)
-#         else:
-#             ax.scatter(X[:, 0], X[:, 1], c=y, s=1, 
-#                     clim=(y.min(), y.max()), zorder=3)
-#     else:
-#         ax.scatter(X[:, 0], X[:, 1], c=y, s=1, alpha=0,
-#                 clim=(y.min(), y.max()), zorder=3)   
-#     ax.axis('tight')
-#     if not axis_digits:
-#         ax.axis('off')
-#     #xlim = [0,1]
-#     #ylim = [0,1]
-#     xlim = ax.get_xlim()
-#     ylim = ax.get_ylim()
-#     if not axis_ticks:
-#         ax.set_yticklabels([])
-#         ax.set_xticklabels([])
-
-#     xx, yy = np.meshgrid(np.linspace(*xlim, num=200),
-#                          np.linspace(*ylim, num=200))
-
-#     grid = np.c_[xx.ravel(), yy.ravel()]
-
-#     if modt.use_2_dim_gate_based_on is not None:
-#         grid = np.append(grid, np.ones([grid.shape[0], 1]),axis=1) # Bias
-#         Z = modt.get_expert(grid, iteration, internal=True).reshape(xx.shape)
-#     else:
-#         Z = modt.get_expert(grid, iteration, internal=False).reshape(xx.shape)
-
-#     # Create a color plot with the results
-#     n_classes = len(np.unique(Z))
-#     contours = ax.contourf(xx, yy, Z, alpha=0.3,
-#                            levels=np.arange(n_classes + 1) - 0.5,
-#                            zorder=1)
-
-#     ax.set(xlim=xlim, ylim=ylim)
-
-#     if title:
-#         plt.title("Iteration: {}".format(iteration))
-
-#     #return plt
-#     #plt.show()
-
-
 
 def plot_initialization_gates(modt, point_size=3, rasterize=False):
     plt.subplot(1, 2, 1)
