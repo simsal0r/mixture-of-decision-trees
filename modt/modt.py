@@ -1,8 +1,6 @@
+from timeit import default_timer as timer
 import numpy as np
 import pandas as pd
-from timeit import default_timer as timer
-import pickle
-
 from sklearn import tree
 from sklearn.preprocessing import StandardScaler
 from sklearn.decomposition import PCA
@@ -12,11 +10,63 @@ from sklearn.linear_model import Ridge
 from sklearn.linear_model import Lasso
 from sklearn.mixture import GaussianMixture
 from sklearn.discriminant_analysis import LinearDiscriminantAnalysis
-from xgboost import XGBClassifier
 
 from modt._initialization import *
 
 class MoDT():
+    """Mixture of Decision Trees for Interpretable Machine Learning
+
+    Parameters
+    ----------
+    X : array-like, shape (n_samples, n_features); Pandas DataFrame or Numpy array
+        Input data 
+
+    y : array-like, shape (n_samples,); Pandas DataFrame or Numpy array
+        Target
+
+    n_experts : int
+        Number of experts/DTs. Value between 2-7 recommended.
+
+    iterations : int
+        Number of iterations
+
+    max_depth: int
+        Maximum depth of the DTs. Value between 1-4 recommended, if interpretability is desired
+
+    init_learning_rate : float, default=100
+        Learning rate. Values below 1 are definitely too low.
+
+    learning_rate_decay : float, default=0.995
+        Exponential decay of the learning rate. 1 equates no decay.
+
+    initialization_method : {"random", 
+                             Random_init(seed), 
+                             Kmeans_init(theta_fittig_method),
+                             KDTmeans_init(alpha,beta,gamma,theta_fittig_method),
+                             BGM_init(theta_fittig_method, n_components, covariance_type, init_params, max_iter, mean_precision_prior,
+                                      weight_concentration_prior_type, weight_concentration_prior, weight_cutoff) 
+                            }, default="random"
+        Sets the starting point for the optimization. The methods are defined in _initialization.py.
+
+    use_2_dim_gate_based_on : {
+                               "feature_importance",     
+                               "feature_importance_lda",
+                               "feature_importance_lda_max",
+                               "feature_importance_lr",
+                               "feature_importance_lr_max",
+                               "feature_importance_xgb",
+                               "feature_importance_pca_loadings",
+                               "PCA",
+                               None
+                              }, default=None
+        Enable the 2D gate variant with one of the feature selection methods.
+        If None is selected, the full gate variant is used.
+
+    use_2_dim_clustering : bool, default=False
+        Whether to apply the clustering of the initialization methods to all features of X or just to the 2D variant.
+
+
+    """
 
     def __init__(self,
                  X,
@@ -61,7 +111,7 @@ class MoDT():
         (self.X,  # Bias and standardization will be added later
          self.X_original,  # Original input as numpy array 
          self.X_original_pd,
-         self.X_one_hot, # TODO: Remove
+         self.X_one_hot,
          self.y,
          self.y_original,
          self.feature_names,
@@ -126,6 +176,7 @@ class MoDT():
             raise ValueError("At least 1 iteration is necessary.")
 
     def _interpret_input(self, X, y, feature_names, class_names):
+        """Preprocess the input"""
         X_one_hot = None
         X_original_pd = None
         feature_names_new = None
@@ -145,7 +196,6 @@ class MoDT():
         elif isinstance(X, np.ndarray):  # Numpy
             X_new = X
             X_original = X
-            # TODO: Insert categorical treatment
 
             if feature_names is not None:
                 if len(feature_names) != X.shape[1]:
@@ -164,6 +214,7 @@ class MoDT():
         return X_new, X_original, X_original_pd, X_one_hot, y_new, y_original, feature_names_new, feature_names_one_hot, class_names_new
 
     def _interpret_input_y(self, y):
+        """Preprocess y and store class names/labels."""
         class_names_new = None
         if isinstance(y, pd.core.series.Series):  # Pandas 
             y_new, class_names = pd.factorize(y)
@@ -179,6 +230,7 @@ class MoDT():
         else:
             raise ValueError("y must be Pandas series Pandas DataFrame or Numpy array.")
 
+        # Map the factorized labels to the original labels
         indexes_unique = np.unique(y, return_index=True)[1]
         keys = [y[idx] for idx in indexes_unique] 
         values = [y_new[idx] for idx in indexes_unique] 
@@ -237,6 +289,7 @@ class MoDT():
 
 
     def _get_2_dim_feature_importance_mask(self, method="DT"):
+        """Selects the 2 most important features for the 2D gate."""
 
         X_without_bias = self.X[:,:-1]
 
@@ -245,6 +298,7 @@ class MoDT():
             clf.fit(X_without_bias, self.y)
             importances = clf.feature_importances_
         elif method == "XGB":
+            from xgboost import XGBClassifier  # Optional import
             clf = XGBClassifier(use_label_encoder=False, eval_metric="mlogloss")
             clf.fit(X_without_bias, self.y)
             importances = clf.feature_importances_
@@ -300,12 +354,12 @@ class MoDT():
             top_features_idx = top_features_idx_all[mask][:2]  # Select 2 best features
             self.top_features_idx = top_features_idx
 
-            if self.verbose:
+            if self.verbose and self.verbose_detailed:
                 print("Top 2 feature importance with features that have at least 10 unique values:", importances[top_features_idx])
                 print("Top 2 feature importance including features w/ fewer than 10 unique values:", importances[np.argsort(importances)[:2]])
         else:
             self.top_features_idx = np.argsort(importances)[:2]
-            if self.verbose:
+            if self.verbose and self.verbose_detailed:
                 print("Top 2 feature importance including features w/ fewer than 10 unique values:", importances[np.argsort(importances)[:2]])
 
         # X with only 2 dimensions (+1 bias) for interpretable gates
@@ -327,6 +381,7 @@ class MoDT():
         return X, X_gate
 
     def _transform_X_into_2_dim_for_prediction(self, X, method):
+        """If X is inputted for prediction, the 2D slice for the 2D gating function is returned."""
         if method != "PCA":
             X = X[:, self.X_top_2_mask] # Bias included
         else:
@@ -374,7 +429,17 @@ class MoDT():
 
         return initialized_theta
 
-    def fit(self, optimization_method="least_squares_linear_regression", early_stopping=True, use_posterior=False, **optimization_kwargs):
+    def fit(self, optimization_method="least_squares_linear_regression", early_stopping=False, use_posterior=False, **optimization_kwargs):
+        """Starts the EM fitting process.
+
+        Parameters
+        ----------
+        optimization_method : {"least_squares_linear_regression", "lasso_regression",
+                               "ridge_regression", "matmul"}, default="least_squares_linear_regression"
+
+        early_stopping : {True, False, "likelihood", "accuracy"}, default=false
+
+        """
         
         self._initialize_fitting_variables()
         if early_stopping is True:

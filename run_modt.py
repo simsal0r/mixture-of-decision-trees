@@ -10,28 +10,26 @@ parameters = {
     "y": data_target,
     "n_experts": 3,
     "iterations": 50,
-    "max_depth": 2,
+    "max_depth": 1,
     "init_learning_rate": 10,
     "learning_rate_decay": 1,
     "initialization_method": Random_init(42),
-    "feature_names": None,
-    "class_names": None,
     "use_2_dim_gate_based_on": "feature_importance_lr_max",
     "use_2_dim_clustering": False,
     "black_box_algorithm": None,
+    "feature_names": None,
+    "class_names": None,
+    "save_likelihood": False,
+    "verbose": True,    
     }
 
 parameters_fit = {
     "optimization_method": "least_squares_linear_regression",
-    "early_stopping": "likelihood",
+    "early_stopping": "accuracy",
     "use_posterior": False,
     }
 
-
 modt = MoDT(**parameters)
-#print(modt.learn_rate)
 modt.fit(**parameters_fit)
-#print(modt.gating_values)
-#modt.score_internal_disjoint()
+print("Training accuracy:", modt.score_internal_disjoint())
 
-print(modt.init_theta)

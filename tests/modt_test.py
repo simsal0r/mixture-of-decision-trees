@@ -107,7 +107,7 @@ class TestMoDT(unittest.TestCase):
     def test_kmeans_init(self):
         self.set_default_paramas()
         self.parameters["initialization_method"] = Kmeans_init(theta_fittig_method="lda")
-        n_experts = [1,2,3,10]
+        n_experts = [2,3,10]
         for n in n_experts:
             self.parameters["n_experts"] = n
             test_model = TestMoDT.fit_modt(self.parameters, self.parameters_fit)
