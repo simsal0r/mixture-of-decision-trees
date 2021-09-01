@@ -29,7 +29,7 @@ def _get_desired_theta_dimensions(self_modt):
     return (n_features, self_modt.n_experts)
 
 def _random_initialization_fallback(self_modt, shape):
-    if True or self_modt.verbose:  # TODO
+    if True or self_modt.verbose: 
         print(str(self_modt.initialization_method) + " separation unsuccessful. Gate initialized randomly instead.")
     return np.random.rand(shape[0], shape[1])
 

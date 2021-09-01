@@ -714,7 +714,7 @@ class MoDT():
  
     def _log_values_to_array(self):
         # Plotting & Debugging
-        self.all_theta_gating.append(self.theta_gating.copy())  # TODO: Theta and gating values not in sync
+        self.all_theta_gating.append(self.theta_gating.copy())
         self.all_DTs.append(self.DT_experts.copy())
         self.all_gating_values.append(self.gating_values.copy())
 

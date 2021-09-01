@@ -261,8 +261,7 @@ def visualize_decision_area(modt,
                          np.linspace(*ylim, num=200))
     grid = np.c_[xx.ravel(), yy.ravel()]
 
-    #grid = np.append(grid, np.ones([grid.shape[0], 1]),axis=1) # Bias
-    Z = modt.predict(grid, preprocessing=True).reshape(xx.shape) #TODO: Stdz is applied here
+    Z = modt.predict(grid, preprocessing=True).reshape(xx.shape) 
 
     # Create a contour plot with the results Z -> regions
     n_classes = len(np.unique(Z))
@@ -276,8 +275,6 @@ def plot_initialization_gates(modt, point_size=3, rasterize=False):
     plot_initialization(modt,point_size=point_size, rasterize=rasterize)
     plt.subplot(1, 2, 2)
     plot_gating(modt,iteration=0, point_size=point_size, rasterize=rasterize, title=False, axis_digits=False, inverse_transform_standardization=False)
-    # plt.subplot(1, 3, 3)
-    # plot_gating(modt,iteration=modt.best_iteration,title=False,axis_digits=False,inverse_transform_standardization=False)
 
 
 def plot_training(modt):

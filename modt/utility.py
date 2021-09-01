@@ -39,7 +39,6 @@ def optuna_optimization(dataset_input, dataset_target, n_experts, max_depth, gat
     from modt._initialization import BGM_init
 
     from datetime import datetime
-    import pickle
     import gc
     from timeit import default_timer as timer
 
